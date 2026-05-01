@@ -3,11 +3,80 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 
-# ---------------- PAGE SETUP ----------------
 st.set_page_config(
     page_title="Smart Health Insurance System",
+    page_icon="🏥",
     layout="wide"
 )
+
+# ---------------- CSS DESIGN ----------------
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: white;
+}
+
+.main-title {
+    font-size: 42px;
+    font-weight: bold;
+    color: #38bdf8;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.sub-title {
+    text-align: center;
+    font-size: 18px;
+    color: #cbd5e1;
+    margin-bottom: 30px;
+}
+
+.card {
+    background-color: #1e293b;
+    padding: 25px;
+    border-radius: 18px;
+    box-shadow: 0px 4px 15px rgba(0,0,0,0.4);
+    border: 1px solid #334155;
+    margin-bottom: 20px;
+}
+
+.metric-card {
+    background-color: #0f766e;
+    padding: 22px;
+    border-radius: 16px;
+    text-align: center;
+    color: white;
+    font-weight: bold;
+}
+
+.login-box {
+    background-color: #1e293b;
+    padding: 35px;
+    border-radius: 20px;
+    border: 1px solid #334155;
+    box-shadow: 0px 4px 20px rgba(0,0,0,0.5);
+}
+
+.stButton button {
+    background-color: #0284c7;
+    color: white;
+    border-radius: 10px;
+    padding: 10px 25px;
+    border: none;
+    font-weight: bold;
+}
+
+.stButton button:hover {
+    background-color: #0369a1;
+    color: white;
+}
+
+[data-testid="stSidebar"] {
+    background-color: #020617;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ---------------- DATABASE ----------------
 def get_connection():
@@ -16,6 +85,15 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE,
+        password TEXT,
+        role TEXT
+    )
+    """)
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS policies (
@@ -39,6 +117,14 @@ def init_db():
         status TEXT,
         submission_date TEXT
     )
+    """)
+
+    cursor.execute("""
+    INSERT OR IGNORE INTO users (email, password, role)
+    VALUES
+    ('hospital@gmail.com', '1234', 'Hospital'),
+    ('officer@gmail.com', '1234', 'Insurance Officer'),
+    ('user@gmail.com', '1234', 'Policyholder')
     """)
 
     cursor.execute("""
@@ -66,162 +152,235 @@ def check_fraud(policy_status, claim_amount, coverage_limit):
     else:
         return "Low Risk"
 
-# ---------------- HEADER ----------------
-st.title("Smart Health Insurance Claim Processing and Fraud Detection System")
-st.write("A web-based application for claim submission, policy verification, fraud risk checking, and claim tracking.")
+# ---------------- SESSION LOGIN ----------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-role = st.sidebar.selectbox(
-    "Select User Role",
-    ["Hospital", "Insurance Officer", "Policyholder"]
-)
+if "role" not in st.session_state:
+    st.session_state.role = None
 
-# ---------------- HOSPITAL DASHBOARD ----------------
-if role == "Hospital":
-    st.header("Hospital Dashboard")
+# ---------------- LOGIN PAGE ----------------
+if not st.session_state.logged_in:
+    st.markdown('<div class="main-title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Claim Processing and Fraud Detection Application</div>', unsafe_allow_html=True)
 
-    conn = get_connection()
-    df = pd.read_sql_query("SELECT * FROM claims", conn)
-
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Claims", len(df))
-    col2.metric("Pending Claims", len(df[df["status"] == "Pending"]) if not df.empty else 0)
-    col3.metric("Approved Claims", len(df[df["status"] == "Approved"]) if not df.empty else 0)
-    col4.metric("Rejected Claims", len(df[df["status"] == "Rejected"]) if not df.empty else 0)
-
-    st.subheader("Submit New Insurance Claim")
-
-    with st.form("claim_form"):
-        policy_number = st.text_input("Policy Number")
-        patient_name = st.text_input("Patient Name")
-        hospital_name = st.text_input("Hospital Name")
-        treatment_type = st.selectbox(
-            "Treatment Type",
-            ["Surgery", "Medicine", "Emergency", "Lab Test", "Other"]
-        )
-        claim_amount = st.number_input("Claim Amount", min_value=0.0, step=1000.0)
-
-        submitted = st.form_submit_button("Submit Claim")
-
-        if submitted:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT coverage_limit, status FROM policies WHERE policy_number=?",
-                (policy_number,)
-            )
-            policy = cursor.fetchone()
-
-            if policy:
-                coverage_limit, policy_status = policy
-                fraud_risk = check_fraud(policy_status, claim_amount, coverage_limit)
-
-                if policy_status != "Active":
-                    claim_status = "Rejected"
-                else:
-                    claim_status = "Pending"
-
-                cursor.execute("""
-                INSERT INTO claims
-                (policy_number, patient_name, hospital_name, treatment_type,
-                 claim_amount, fraud_risk, status, submission_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    policy_number,
-                    patient_name,
-                    hospital_name,
-                    treatment_type,
-                    claim_amount,
-                    fraud_risk,
-                    claim_status,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                ))
-
-                conn.commit()
-                st.success(f"Claim submitted successfully! Fraud Risk: {fraud_risk}")
-            else:
-                st.error("Invalid Policy Number!")
-
-    st.subheader("Submitted Claims")
-    df = pd.read_sql_query("SELECT * FROM claims", conn)
-    st.dataframe(df, use_container_width=True)
-
-    conn.close()
-
-# ---------------- OFFICER DASHBOARD ----------------
-elif role == "Insurance Officer":
-    st.header("Insurance Officer Dashboard")
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    df = pd.read_sql_query("SELECT * FROM claims", conn)
-    st.subheader("All Submitted Claims")
-    st.dataframe(df, use_container_width=True)
-
-    st.subheader("Review Claim")
-
-    claim_id = st.number_input("Enter Claim ID", min_value=1, step=1)
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        if st.button("Approve Claim"):
-            cursor.execute(
-                "UPDATE claims SET status='Approved' WHERE claim_id=?",
-                (claim_id,)
-            )
-            conn.commit()
-            st.success("Claim approved successfully!")
+    col1, col2, col3 = st.columns([1, 1.2, 1])
 
     with col2:
-        if st.button("Reject Claim"):
-            cursor.execute(
-                "UPDATE claims SET status='Rejected' WHERE claim_id=?",
-                (claim_id,)
-            )
-            conn.commit()
-            st.error("Claim rejected!")
+        st.markdown('<div class="login-box">', unsafe_allow_html=True)
+        st.subheader("🔐 Login Panel")
 
-    with col3:
-        if st.button("Request More Info"):
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        role = st.selectbox("Select Role", ["Hospital", "Insurance Officer", "Policyholder"])
+
+        if st.button("Login"):
+            conn = get_connection()
+            cursor = conn.cursor()
+
             cursor.execute(
-                "UPDATE claims SET status='Request Info' WHERE claim_id=?",
-                (claim_id,)
+                "SELECT * FROM users WHERE email=? AND password=? AND role=?",
+                (email, password, role)
             )
-            conn.commit()
-            st.warning("More information requested!")
+            user = cursor.fetchone()
+            conn.close()
+
+            if user:
+                st.session_state.logged_in = True
+                st.session_state.role = role
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid login details")
+
+        st.markdown("### Demo Login")
+        st.info("""
+Hospital: hospital@gmail.com / 1234  
+Officer: officer@gmail.com / 1234  
+Policyholder: user@gmail.com / 1234
+""")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------- MAIN APP ----------------
+else:
+    st.sidebar.title("🏥 Smart Insurance")
+    st.sidebar.success(f"Logged in as: {st.session_state.role}")
+
+    menu = st.sidebar.radio(
+        "Navigation",
+        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim"]
+    )
+
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.session_state.role = None
+        st.rerun()
+
+    st.markdown('<div class="main-title">Smart Health Insurance Claim Processing System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-title">Policy Verification • Fraud Detection • Claim Tracking</div>', unsafe_allow_html=True)
+
+    conn = get_connection()
+
+    # ---------------- DASHBOARD ----------------
+    if menu == "Dashboard":
+        st.header("📊 Dashboard Overview")
+
+        df = pd.read_sql_query("SELECT * FROM claims", conn)
+
+        total = len(df)
+        pending = len(df[df["status"] == "Pending"]) if not df.empty else 0
+        approved = len(df[df["status"] == "Approved"]) if not df.empty else 0
+        rejected = len(df[df["status"] == "Rejected"]) if not df.empty else 0
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        with c1:
+            st.markdown(f'<div class="metric-card">Total Claims<br><h1>{total}</h1></div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<div class="metric-card">Pending Claims<br><h1>{pending}</h1></div>', unsafe_allow_html=True)
+        with c3:
+            st.markdown(f'<div class="metric-card">Approved Claims<br><h1>{approved}</h1></div>', unsafe_allow_html=True)
+        with c4:
+            st.markdown(f'<div class="metric-card">Rejected Claims<br><h1>{rejected}</h1></div>', unsafe_allow_html=True)
+
+        st.markdown("### Recent Claims")
+        st.dataframe(df, use_container_width=True)
+
+    # ---------------- SUBMIT CLAIM ----------------
+    elif menu == "Submit Claim":
+        if st.session_state.role != "Hospital":
+            st.warning("Only Hospital users can submit claims.")
+        else:
+            st.header("📝 Claim Submission Form")
+
+            with st.form("claim_form"):
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    policy_number = st.text_input("Policy Number")
+                    patient_name = st.text_input("Patient Name")
+                    hospital_name = st.text_input("Hospital Name")
+
+                with col2:
+                    treatment_type = st.selectbox(
+                        "Treatment Type",
+                        ["Surgery", "Medicine", "Emergency", "Lab Test", "Other"]
+                    )
+                    claim_amount = st.number_input("Claim Amount", min_value=0.0, step=1000.0)
+                    document = st.file_uploader("Upload Claim Document", type=["pdf", "jpg", "png"])
+
+                submitted = st.form_submit_button("Submit Claim")
+
+                if submitted:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT coverage_limit, status FROM policies WHERE policy_number=?",
+                        (policy_number,)
+                    )
+                    policy = cursor.fetchone()
+
+                    if policy:
+                        coverage_limit, policy_status = policy
+                        fraud_risk = check_fraud(policy_status, claim_amount, coverage_limit)
+
+                        if policy_status != "Active":
+                            claim_status = "Rejected"
+                        else:
+                            claim_status = "Pending"
+
+                        cursor.execute("""
+                        INSERT INTO claims
+                        (policy_number, patient_name, hospital_name, treatment_type,
+                         claim_amount, fraud_risk, status, submission_date)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            policy_number,
+                            patient_name,
+                            hospital_name,
+                            treatment_type,
+                            claim_amount,
+                            fraud_risk,
+                            claim_status,
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        ))
+
+                        conn.commit()
+                        st.success(f"Claim submitted successfully! Fraud Risk: {fraud_risk}")
+                    else:
+                        st.error("Invalid Policy Number!")
+
+    # ---------------- REVIEW CLAIMS ----------------
+    elif menu == "Review Claims":
+        if st.session_state.role != "Insurance Officer":
+            st.warning("Only Insurance Officers can review claims.")
+        else:
+            st.header("🧾 Officer Review Screen")
+
+            df = pd.read_sql_query("SELECT * FROM claims", conn)
+            st.dataframe(df, use_container_width=True)
+
+            claim_id = st.number_input("Enter Claim ID", min_value=1, step=1)
+
+            col1, col2, col3 = st.columns(3)
+
+            cursor = conn.cursor()
+
+            with col1:
+                if st.button("Approve"):
+                    cursor.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (claim_id,))
+                    conn.commit()
+                    st.success("Claim approved successfully!")
+                    st.rerun()
+
+            with col2:
+                if st.button("Reject"):
+                    cursor.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?", (claim_id,))
+                    conn.commit()
+                    st.error("Claim rejected!")
+                    st.rerun()
+
+            with col3:
+                if st.button("Request Info"):
+                    cursor.execute("UPDATE claims SET status='Request Info' WHERE claim_id=?", (claim_id,))
+                    conn.commit()
+                    st.warning("More information requested!")
+                    st.rerun()
+
+    # ---------------- TRACK CLAIM ----------------
+    elif menu == "Track Claim":
+        st.header("🔍 Policyholder Claim Tracking")
+
+        claim_id = st.number_input("Enter Claim ID", min_value=1, step=1)
+
+        if st.button("Check Status"):
+            cursor = conn.cursor()
+
+            cursor.execute("""
+            SELECT claim_id, policy_number, patient_name, claim_amount,
+                   fraud_risk, status, submission_date
+            FROM claims
+            WHERE claim_id=?
+            """, (claim_id,))
+
+            result = cursor.fetchone()
+
+            if result:
+                st.success("Claim Found")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.info(f"Claim ID: {result[0]}")
+                    st.info(f"Policy Number: {result[1]}")
+                    st.info(f"Patient Name: {result[2]}")
+
+                with col2:
+                    st.warning(f"Claim Amount: {result[3]}")
+                    st.warning(f"Fraud Risk: {result[4]}")
+                    st.warning(f"Current Status: {result[5]}")
+
+                st.write(f"Submission Date: {result[6]}")
+            else:
+                st.error("Claim not found!")
 
     conn.close()
-
-# ---------------- POLICYHOLDER DASHBOARD ----------------
-elif role == "Policyholder":
-    st.header("Policyholder Claim Tracking")
-
-    claim_id = st.number_input("Enter Claim ID", min_value=1, step=1)
-
-    if st.button("Check Claim Status"):
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT claim_id, policy_number, patient_name, claim_amount,
-               fraud_risk, status, submission_date
-        FROM claims
-        WHERE claim_id=?
-        """, (claim_id,))
-
-        result = cursor.fetchone()
-
-        if result:
-            st.success("Claim Found")
-
-            st.write(f"**Claim ID:** {result[0]}")
-            st.write(f"**Policy Number:** {result[1]}")
-            st.write(f"**Patient Name:** {result[2]}")
-            st.write(f"**Claim Amount:** {result[3]}")
-            st.write(f"**Fraud Risk:** {result[4]}")
-            st.write(f"**Current Status:** {result[5]}")
-            st.write(f"**Submission Date:** {result[6]}")
-        else:
-            st.error("Claim not found!")
-
-        conn.close()
