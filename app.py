@@ -86,13 +86,8 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # Reset old wrong tables
-    c.execute("DROP TABLE IF EXISTS users")
-    c.execute("DROP TABLE IF EXISTS policies")
-    c.execute("DROP TABLE IF EXISTS claims")
-
     c.execute("""
-    CREATE TABLE users (
+    CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
         password TEXT,
@@ -101,7 +96,7 @@ def init_db():
     """)
 
     c.execute("""
-    CREATE TABLE policies (
+    CREATE TABLE IF NOT EXISTS policies (
         policy_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT UNIQUE,
         policyholder_name TEXT,
@@ -111,7 +106,7 @@ def init_db():
     """)
 
     c.execute("""
-    CREATE TABLE claims (
+    CREATE TABLE IF NOT EXISTS claims (
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
         patient_name TEXT,
@@ -148,7 +143,9 @@ init_db()
 
 # ---------------- FRAUD CHECK ----------------
 def fraud_check(policy_status, claim_amount, coverage_limit):
-    if policy_status != "Active":
+    if policy_status == "Unknown":
+        return "Medium Risk"
+    elif policy_status != "Active":
         return "High Risk"
     elif claim_amount > coverage_limit:
         return "High Risk"
@@ -234,7 +231,7 @@ else:
         df = pd.read_sql_query("SELECT * FROM claims", conn)
 
         total = len(df)
-        pending = len(df[df["status"] == "Pending"]) if not df.empty else 0
+        pending = len(df[df["status"].isin(["Pending", "Pending Verification"])]) if not df.empty else 0
         approved = len(df[df["status"] == "Approved"]) if not df.empty else 0
         rejected = len(df[df["status"] == "Rejected"]) if not df.empty else 0
 
@@ -278,23 +275,31 @@ else:
                 submit = st.form_submit_button("Submit Claim")
 
                 if submit:
-                    c = conn.cursor()
+                    if not policy_number or not patient_name or not hospital_name:
+                        st.error("Please fill all required fields.")
+                    else:
+                        c = conn.cursor()
 
-                    c.execute(
-                        "SELECT coverage_limit, status FROM policies WHERE policy_number=?",
-                        (policy_number,)
-                    )
+                        c.execute(
+                            "SELECT coverage_limit, status FROM policies WHERE policy_number=?",
+                            (policy_number,)
+                        )
 
-                    policy = c.fetchone()
+                        policy = c.fetchone()
 
-                    if policy:
-                        coverage_limit, policy_status = policy
-                        risk = fraud_check(policy_status, claim_amount, coverage_limit)
+                        if policy:
+                            coverage_limit, policy_status = policy
+                            risk = fraud_check(policy_status, claim_amount, coverage_limit)
 
-                        if policy_status != "Active":
-                            claim_status = "Rejected"
+                            if policy_status != "Active":
+                                claim_status = "Rejected"
+                            else:
+                                claim_status = "Pending"
                         else:
-                            claim_status = "Pending"
+                            coverage_limit = 0
+                            policy_status = "Unknown"
+                            risk = "Medium Risk"
+                            claim_status = "Pending Verification"
 
                         c.execute("""
                         INSERT INTO claims
@@ -313,9 +318,11 @@ else:
                         ))
 
                         conn.commit()
-                        st.success(f"Claim submitted successfully! Fraud Risk: {risk}")
-                    else:
-                        st.error("Invalid Policy Number")
+
+                        st.success("Claim submitted successfully!")
+                        st.info(f"Policy Status: {policy_status}")
+                        st.warning(f"Fraud Risk: {risk}")
+                        st.info(f"Claim Status: {claim_status}")
 
     # ---------------- REVIEW CLAIMS ----------------
     elif menu == "Review Claims":
