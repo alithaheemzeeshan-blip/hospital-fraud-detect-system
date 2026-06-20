@@ -3,10 +3,17 @@ import sqlite3
 import hashlib
 import pandas as pd
 from datetime import datetime
-import os
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Smart Health Insurance System", layout="wide")
+
+# ================= SAFE SESSION INIT =================
+if "login" not in st.session_state:
+    st.session_state.login = False
+    st.session_state.role = ""
+    st.session_state.email = ""
+    st.session_state.time = ""
+    st.session_state.logout_confirm = False
 
 # ================= DB =================
 def get_conn():
@@ -52,13 +59,15 @@ def init_db():
     )
     """)
 
-    users = [
-        ("hospital@gmail.com", hash_password("hospital123"), "Hospital"),
-        ("officer@gmail.com", hash_password("officer123"), "Officer"),
-        ("user@gmail.com", hash_password("user123"), "Policyholder"),
-    ]
-
-    c.executemany("INSERT INTO users VALUES (?,?,?)", users)
+    # insert demo users only if empty
+    c.execute("SELECT COUNT(*) FROM users")
+    if c.fetchone()[0] == 0:
+        users = [
+            ("hospital@gmail.com", hash_password("hospital123"), "Hospital"),
+            ("officer@gmail.com", hash_password("officer123"), "Officer"),
+            ("user@gmail.com", hash_password("user123"), "Policyholder"),
+        ]
+        c.executemany("INSERT INTO users VALUES (?,?,?)", users)
 
     conn.commit()
     conn.close()
@@ -99,15 +108,7 @@ def ai_fraud_model(status, amount, limit, hospital):
 
     return min(score, 100), ", ".join(reasons)
 
-# ================= SESSION =================
-if "login" not in st.session_state:
-    st.session_state.login = False
-    st.session_state.role = ""
-    st.session_state.email = ""
-    st.session_state.time = None
-    st.session_state.logout_confirm = False
-
-# ================= UI =================
+# ================= UI STYLE =================
 st.markdown("""
 <style>
 body {background:#0b1220; color:white;}
@@ -170,29 +171,36 @@ if not st.session_state.login:
 # ================= MAIN APP =================
 else:
 
+    # SAFE SIDEBAR (NO CRASH VERSION)
     st.sidebar.title("🏥 Smart Health Insurance System")
 
-    st.sidebar.write(f"👤 {st.session_state.email}")
-    st.sidebar.write(f"🧩 {st.session_state.role}")
-    st.sidebar.write(f"⏰ {st.session_state.time}")
+    st.sidebar.write(f"👤 {st.session_state.get('email', '-')}")
+    st.sidebar.write(f"🧩 {st.session_state.get('role', '-')}")
+    st.sidebar.write(f"⏰ {st.session_state.get('time', '-')}")
 
     menu = st.sidebar.radio(
         "Navigation",
         ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
     )
 
-    # ================= LOGOUT =================
+    # ================= LOGOUT SAFE =================
     if st.sidebar.button("Logout"):
         st.session_state.logout_confirm = True
 
     if st.session_state.logout_confirm:
         st.sidebar.warning("Confirm Logout?")
-        if st.sidebar.button("Yes Logout"):
+        col1, col2 = st.sidebar.columns(2)
+
+        if col1.button("Yes"):
             st.session_state.login = False
             st.session_state.role = ""
             st.session_state.email = ""
+            st.session_state.time = ""
             st.session_state.logout_confirm = False
             st.rerun()
+
+        if col2.button("No"):
+            st.session_state.logout_confirm = False
 
     conn = get_conn()
 
@@ -203,29 +211,30 @@ else:
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
-        c1,c2,c3 = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
         c1.metric("Total Claims", len(df))
-        c2.metric("High Risk", len(df[df["fraud_score"]>70]) if not df.empty else 0)
-        c3.metric("Safe", len(df[df["fraud_score"]<=40]) if not df.empty else 0)
+        c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
 
         st.markdown("---")
 
-        for _, r in df.tail(10).iterrows():
+        if not df.empty:
+            for _, r in df.tail(10).iterrows():
 
-            level = "high" if r["fraud_score"]>70 else "medium" if r["fraud_score"]>40 else "low"
+                level = "high" if r["fraud_score"] > 70 else "medium" if r["fraud_score"] > 40 else "low"
 
-            st.markdown(f"""
-            <div class="card">
-                <b>Claim ID:</b> {r['claim_id']} |
-                <span class="{level}">{r['fraud_score']}%</span><br><br>
+                st.markdown(f"""
+                <div class="card">
+                    <b>Claim ID:</b> {r['claim_id']} |
+                    <span class="{level}">{r['fraud_score']}%</span><br><br>
 
-                Policy: {r['policy_number']}<br>
-                Amount: {r['claim_amount']}<br>
-                Reason: {r['fraud_reason']}<br>
-                Status: {r['status']}
-            </div>
-            """, unsafe_allow_html=True)
+                    Policy: {r['policy_number']}<br>
+                    Amount: {r['claim_amount']}<br>
+                    Reason: {r['fraud_reason']}<br>
+                    Status: {r['status']}
+                </div>
+                """, unsafe_allow_html=True)
 
     # ================= SUBMIT =================
     elif menu == "Submit Claim":
@@ -246,22 +255,22 @@ else:
 
                 if ok:
                     cur = conn.cursor()
-                    cur.execute("SELECT coverage_limit,status FROM policies WHERE policy_number=?",(p,))
+                    cur.execute("SELECT coverage_limit,status FROM policies WHERE policy_number=?", (p,))
                     pol = cur.fetchone()
 
                     if pol:
-                        limit,status = pol
+                        limit, status = pol
                     else:
-                        limit,status = 0,"Unknown"
+                        limit, status = 0, "Unknown"
 
-                    score, reason = ai_fraud_model(status,a,limit,h)
+                    score, reason = ai_fraud_model(status, a, limit, h)
 
                     final_status = "Rejected" if score > 70 else "Pending"
 
                     cur.execute("""
                         INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?)
-                    """,(p,n,h,t,a,score,reason,final_status,
-                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    """, (p, n, h, t, a, score, reason, final_status,
+                          datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
                     conn.commit()
 
@@ -280,9 +289,9 @@ else:
             df = pd.read_sql("SELECT * FROM claims", conn)
             st.dataframe(df, use_container_width=True)
 
-            cid = st.number_input("Claim ID",1)
+            cid = st.number_input("Claim ID", 1)
 
-            col1,col2 = st.columns(2)
+            col1, col2 = st.columns(2)
 
             if col1.button("Approve"):
                 conn.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (cid,))
@@ -299,7 +308,7 @@ else:
 
         st.title("Track Claim")
 
-        cid = st.number_input("Claim ID",1)
+        cid = st.number_input("Claim ID", 1)
 
         if st.button("Search"):
             cur = conn.cursor()
