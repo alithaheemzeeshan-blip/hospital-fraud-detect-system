@@ -5,7 +5,7 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 
-# ================= PAGE CONFIG =================
+# ================= PAGE =================
 st.set_page_config(page_title="Smart Insurance Pro", layout="wide")
 
 # ================= DB =================
@@ -54,6 +54,7 @@ def init_db():
         timestamp TEXT
     )""")
 
+    # demo users
     c.execute("""
     INSERT OR IGNORE INTO users (email, password, role)
     VALUES
@@ -62,6 +63,7 @@ def init_db():
     ('user@gmail.com', ?, 'Policyholder')
     """, (hash_password("1234"), hash_password("1234"), hash_password("1234")))
 
+    # demo policies
     c.execute("""
     INSERT OR IGNORE INTO policies VALUES
     ('POL123','Ali Khan',50000,'Active'),
@@ -73,16 +75,6 @@ def init_db():
     conn.close()
 
 init_db()
-
-# ================= AUDIT =================
-def log(action, user, cid):
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("""INSERT INTO audit_log(action,performed_by,claim_id,timestamp)
-              VALUES(?,?,?,?)""",
-              (action, user, cid, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-    conn.commit()
-    conn.close()
 
 # ================= FRAUD ENGINE =================
 def fraud_score(status, amount, limit, hospital):
@@ -99,6 +91,17 @@ def fraud_score(status, amount, limit, hospital):
 
     return min(score, 100)
 
+# ================= LOGGING =================
+def log(action, user, cid):
+    conn = get_conn()
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO audit_log(action,performed_by,claim_id,timestamp)
+        VALUES(?,?,?,?)
+    """, (action, user, cid, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    conn.commit()
+    conn.close()
+
 # ================= SESSION =================
 if "login" not in st.session_state:
     st.session_state.login = False
@@ -106,7 +109,7 @@ if "login" not in st.session_state:
 
 # ================= LOGIN =================
 if not st.session_state.login:
-    st.title("🏥 Smart Insurance Pro System")
+    st.title("🏥 Smart Insurance System")
 
     email = st.text_input("Email")
     pw = st.text_input("Password", type="password")
@@ -129,44 +132,47 @@ if not st.session_state.login:
 
 # ================= APP =================
 else:
-    st.sidebar.title("Insurance Pro System")
+    st.sidebar.title("🏥 Insurance System")
     st.sidebar.write(f"Role: {st.session_state.role}")
 
-    menu = st.sidebar.radio("Menu",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track", "Analytics", "Audit Log"])
+    menu = st.sidebar.radio(
+        "Navigation",
+        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics", "Audit Log"]
+    )
 
     conn = get_conn()
 
-    # ============ DASHBOARD ============
+    # ================= DASHBOARD =================
     if menu == "Dashboard":
-        st.title("Dashboard")
+        st.title("📊 Dashboard")
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total", len(df))
+
+        col1.metric("Total Claims", len(df))
         col2.metric("Approved", len(df[df["status"]=="Approved"]) if not df.empty else 0)
         col3.metric("Rejected", len(df[df["status"]=="Rejected"]) if not df.empty else 0)
 
         st.dataframe(df)
 
-    # ============ SUBMIT ============
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
         if st.session_state.role != "Hospital":
-            st.warning("Not allowed")
+            st.warning("Only Hospital users allowed")
         else:
-            st.title("Submit Claim")
+            st.title("📝 Submit Claim")
 
-            with st.form("f"):
-                p = st.text_input("Policy")
-                n = st.text_input("Patient")
-                h = st.text_input("Hospital")
-                t = st.selectbox("Type", ["Surgery","Medicine","Emergency"])
-                a = st.number_input("Amount")
+            with st.form("claim"):
+                p = st.text_input("Policy Number")
+                n = st.text_input("Patient Name")
+                h = st.text_input("Hospital Name")
+                t = st.selectbox("Treatment", ["Surgery","Medicine","Emergency"])
+                a = st.number_input("Claim Amount", min_value=0.0)
 
-                ok = st.form_submit_button("Submit")
+                submit = st.form_submit_button("Submit")
 
-                if ok:
+                if submit:
                     cur = conn.cursor()
                     cur.execute("SELECT coverage_limit,status FROM policies WHERE policy_number=?",(p,))
                     pol = cur.fetchone()
@@ -185,65 +191,75 @@ else:
                     else:
                         staus = "Pending"
 
-                    cur.execute("""INSERT INTO claims
-                    (policy_number,patient_name,hospital_name,treatment_type,
-                    claim_amount,fraud_risk,status,submission_date)
-                    VALUES (?,?,?,?,?,?,?,?)""",
-                    (p,n,h,t,a,risk,staus,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                    cur.execute("""
+                        INSERT INTO claims
+                        (policy_number,patient_name,hospital_name,treatment_type,
+                        claim_amount,fraud_risk,status,submission_date)
+                        VALUES (?,?,?,?,?,?,?,?)
+                    """,(p,n,h,t,a,risk,staus,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
                     conn.commit()
-                    st.success("Submitted")
+                    st.success("Claim Submitted Successfully")
 
-    # ============ REVIEW ============
+    # ================= REVIEW =================
     elif menu == "Review Claims":
         if st.session_state.role != "Insurance Officer":
-            st.warning("Not allowed")
+            st.warning("Only Officers allowed")
         else:
+            st.title("🧑‍💼 Review Claims")
+
             df = pd.read_sql("SELECT * FROM claims", conn)
             st.dataframe(df)
 
-            cid = st.number_input("Claim ID",1)
+            cid = st.number_input("Claim ID", 1)
 
             if st.button("Approve"):
                 conn.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (cid,))
-                log("Approved",st.session_state.role,cid)
+                log("Approved", st.session_state.role, cid)
                 conn.commit()
 
             if st.button("Reject"):
                 conn.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?", (cid,))
-                log("Rejected",st.session_state.role,cid)
+                log("Rejected", st.session_state.role, cid)
                 conn.commit()
 
-    # ============ TRACK ============
-    elif menu == "Track":
-        cid = st.number_input("Claim ID",1)
+    # ================= TRACK =================
+    elif menu == "Track Claim":
+        st.title("🔎 Track Claim")
+
+        cid = st.number_input("Claim ID", 1)
 
         if st.button("Check"):
             cur = conn.cursor()
-            cur.execute("SELECT * FROM claims WHERE claim_id=?",(cid,))
+            cur.execute("SELECT * FROM claims WHERE claim_id=?", (cid,))
             r = cur.fetchone()
 
             if r:
                 st.write(r)
             else:
-                st.error("Not found")
+                st.error("Not Found")
 
-    # ============ ANALYTICS ============
+    # ================= ANALYTICS =================
     elif menu == "Analytics":
+        st.title("📊 Analytics")
+
         df = pd.read_sql("SELECT * FROM claims", conn)
 
-        st.title("Analytics")
+        if not df.empty:
+            fig1 = px.bar(df, x="status", color="status", title="Claim Status Distribution")
+            st.plotly_chart(fig1, use_container_width=True)
 
-        fig = px.histogram(df, x="status", color="status")
-        st.plotly_chart(fig)
+            fig2 = px.scatter(df, x="claim_amount", y="fraud_risk", color="status",
+                              title="Fraud vs Claim Amount")
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("No data available")
 
-        fig2 = px.scatter(df, x="claim_amount", y="fraud_risk", color="status")
-        st.plotly_chart(fig2)
-
-    # ============ AUDIT ============
+    # ================= AUDIT =================
     elif menu == "Audit Log":
+        st.title("📜 Audit Logs")
+
         df = pd.read_sql("SELECT * FROM audit_log", conn)
-        st.title("Audit Trail")
         st.dataframe(df)
 
     conn.close()
