@@ -3,11 +3,16 @@ import sqlite3
 import hashlib
 import pandas as pd
 from datetime import datetime
+import os
 
 # ================= PAGE CONFIG =================
 st.set_page_config(page_title="Smart Health Insurance System", layout="wide")
 
-# ================= SAFE SESSION INIT =================
+# ================= FILE STORAGE =================
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# ================= SESSION =================
 if "login" not in st.session_state:
     st.session_state.login = False
     st.session_state.role = ""
@@ -36,15 +41,6 @@ def init_db():
     """)
 
     c.execute("""
-    CREATE TABLE IF NOT EXISTS policies(
-        policy_number TEXT,
-        policyholder_name TEXT,
-        coverage_limit REAL,
-        status TEXT
-    )
-    """)
-
-    c.execute("""
     CREATE TABLE IF NOT EXISTS claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
@@ -55,11 +51,13 @@ def init_db():
         fraud_score REAL,
         fraud_reason TEXT,
         status TEXT,
-        submission_date TEXT
+        submission_date TEXT,
+        file_path TEXT,
+        file_type TEXT
     )
     """)
 
-    # insert demo users only if empty
+    # demo users
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -81,41 +79,42 @@ def ai_fraud_model(status, amount, limit, hospital):
 
     if status != "Active":
         score += 45
-        reasons.append("Policy inactive or expired")
+        reasons.append("Inactive policy")
 
     if limit > 0:
         ratio = amount / limit
         if ratio > 1:
             score += 40
-            reasons.append("Claim exceeds coverage limit")
+            reasons.append("Over limit claim")
         elif ratio > 0.8:
             score += 25
-            reasons.append("High utilization of policy")
+            reasons.append("High usage policy")
     else:
         score += 30
-        reasons.append("Unknown policy detected")
+        reasons.append("Unknown policy")
 
     if amount > 50000:
         score += 20
-        reasons.append("High-value claim anomaly")
+        reasons.append("High value claim")
 
     if "unknown" in hospital.lower():
         score += 15
-        reasons.append("Unverified hospital source")
+        reasons.append("Unverified hospital")
 
-    if not reasons:
-        reasons.append("Normal behavior detected")
-
-    return min(score, 100), ", ".join(reasons)
+    return min(score, 100), ", ".join(reasons) if reasons else "Normal case"
 
 # ================= UI STYLE =================
 st.markdown("""
 <style>
-body {background:#0b1220; color:white;}
+
+body {
+    background:#0b1220;
+    color:white;
+}
 
 .title {
     text-align:center;
-    font-size:40px;
+    font-size:42px;
     font-weight:900;
     background: linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
     -webkit-background-clip:text;
@@ -140,67 +139,67 @@ body {background:#0b1220; color:white;}
     border-radius:10px;
     padding:8px 14px;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">Smart Health Insurance System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
 
-    email = st.text_input("Email")
-    pw = st.text_input("Password", type="password")
-    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
+    col1, col2, col3 = st.columns([1,2,1])
 
-    if st.button("Login"):
-        conn = get_conn()
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
-                  (email, hash_password(pw), role))
-        user = c.fetchone()
+    with col2:
+        st.subheader("🔐 Login Panel")
 
-        if user:
-            st.session_state.login = True
-            st.session_state.role = role
-            st.session_state.email = email
-            st.session_state.time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            st.rerun()
-        else:
-            st.error("Invalid login")
+        email = st.text_input("Email")
+        pw = st.text_input("Password", type="password")
+        role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
+
+        if st.button("Login"):
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
+                      (email, hash_password(pw), role))
+            user = c.fetchone()
+
+            if user:
+                st.session_state.login = True
+                st.session_state.role = role
+                st.session_state.email = email
+                st.session_state.time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                st.rerun()
+            else:
+                st.error("Invalid login")
+
+        st.info("""
+📧 Demo Credentials
+
+Hospital: hospital@gmail.com / hospital123  
+Officer: officer@gmail.com / officer123  
+Policyholder: user@gmail.com / user123
+""")
 
 # ================= MAIN APP =================
 else:
 
-    # SAFE SIDEBAR (NO CRASH VERSION)
-    st.sidebar.title("🏥 Smart Health Insurance System")
+    st.sidebar.title("🏥 Smart Insurance System")
 
-    st.sidebar.write(f"👤 {st.session_state.get('email', '-')}")
-    st.sidebar.write(f"🧩 {st.session_state.get('role', '-')}")
-    st.sidebar.write(f"⏰ {st.session_state.get('time', '-')}")
+    st.sidebar.write(f"👤 {st.session_state.email}")
+    st.sidebar.write(f"🧩 {st.session_state.role}")
+    st.sidebar.write(f"⏰ {st.session_state.time}")
 
     menu = st.sidebar.radio(
         "Navigation",
         ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
     )
 
-    # ================= LOGOUT SAFE =================
     if st.sidebar.button("Logout"):
-        st.session_state.logout_confirm = True
-
-    if st.session_state.logout_confirm:
-        st.sidebar.warning("Confirm Logout?")
-        col1, col2 = st.sidebar.columns(2)
-
-        if col1.button("Yes"):
-            st.session_state.login = False
-            st.session_state.role = ""
-            st.session_state.email = ""
-            st.session_state.time = ""
-            st.session_state.logout_confirm = False
-            st.rerun()
-
-        if col2.button("No"):
-            st.session_state.logout_confirm = False
+        st.session_state.login = False
+        st.session_state.role = ""
+        st.session_state.email = ""
+        st.rerun()
 
     conn = get_conn()
 
@@ -211,8 +210,7 @@ else:
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
-        c1, c2, c3 = st.columns(3)
-
+        c1,c2,c3 = st.columns(3)
         c1.metric("Total Claims", len(df))
         c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
         c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
@@ -220,7 +218,7 @@ else:
         st.markdown("---")
 
         if not df.empty:
-            for _, r in df.tail(10).iterrows():
+            for _, r in df.tail(8).iterrows():
 
                 level = "high" if r["fraud_score"] > 70 else "medium" if r["fraud_score"] > 40 else "low"
 
@@ -229,14 +227,15 @@ else:
                     <b>Claim ID:</b> {r['claim_id']} |
                     <span class="{level}">{r['fraud_score']}%</span><br><br>
 
-                    Policy: {r['policy_number']}<br>
-                    Amount: {r['claim_amount']}<br>
-                    Reason: {r['fraud_reason']}<br>
-                    Status: {r['status']}
+                    🏥 Hospital: {r['hospital_name']}<br>
+                    💊 Treatment: {r['treatment_type']}<br>
+                    💰 Amount: {r['claim_amount']}<br>
+                    🧠 Reason: {r['fraud_reason']}<br>
+                    📌 Status: {r['status']}
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ================= SUBMIT =================
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
         if st.session_state.role != "Hospital":
@@ -244,37 +243,66 @@ else:
         else:
             st.title("Submit Claim")
 
+            treatment_types = [
+                "General Checkup",
+                "Emergency Care",
+                "Surgery",
+                "Cardiology Treatment",
+                "Orthopedic Treatment",
+                "Neurology Treatment",
+                "Maternity Care",
+                "Radiology / MRI / CT Scan",
+                "Laboratory Tests",
+                "ICU / Critical Care"
+            ]
+
             with st.form("claim"):
+
                 p = st.text_input("Policy Number")
                 n = st.text_input("Patient Name")
                 h = st.text_input("Hospital Name")
-                t = st.text_input("Treatment Type")
+                t = st.selectbox("Treatment Type", treatment_types)
                 a = st.number_input("Claim Amount", min_value=0.0)
 
-                ok = st.form_submit_button("Submit")
+                uploaded_file = st.file_uploader(
+                    "Upload Medical Report (PDF/Image)",
+                    type=["pdf", "png", "jpg", "jpeg"]
+                )
 
-                if ok:
-                    cur = conn.cursor()
-                    cur.execute("SELECT coverage_limit,status FROM policies WHERE policy_number=?", (p,))
-                    pol = cur.fetchone()
+                submit = st.form_submit_button("Submit Claim")
 
-                    if pol:
-                        limit, status = pol
-                    else:
-                        limit, status = 0, "Unknown"
+                if submit:
+                    file_path = None
+                    file_type = None
+
+                    if uploaded_file is not None:
+                        file_type = uploaded_file.type
+                        file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                    limit, status = 50000, "Active"
 
                     score, reason = ai_fraud_model(status, a, limit, h)
 
                     final_status = "Rejected" if score > 70 else "Pending"
 
+                    cur = conn.cursor()
                     cur.execute("""
-                        INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?)
-                    """, (p, n, h, t, a, score, reason, final_status,
-                          datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (
+                        p, n, h, t, a,
+                        score, reason,
+                        final_status,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        file_path,
+                        file_type
+                    ))
 
                     conn.commit()
 
-                    st.success("Claim Submitted")
+                    st.success("Claim Submitted Successfully")
                     st.info(f"Fraud Score: {score}%")
                     st.warning(f"Reason: {reason}")
 
@@ -289,21 +317,7 @@ else:
             df = pd.read_sql("SELECT * FROM claims", conn)
             st.dataframe(df, use_container_width=True)
 
-            cid = st.number_input("Claim ID", 1)
-
-            col1, col2 = st.columns(2)
-
-            if col1.button("Approve"):
-                conn.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (cid,))
-                conn.commit()
-                st.success("Approved")
-
-            if col2.button("Reject"):
-                conn.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?", (cid,))
-                conn.commit()
-                st.error("Rejected")
-
-    # ================= TRACK =================
+    # ================= TRACK CLAIM =================
     elif menu == "Track Claim":
 
         st.title("Track Claim")
@@ -317,6 +331,17 @@ else:
 
             if r:
                 st.json(r)
+
+                st.markdown("### 📎 Uploaded Document")
+
+                if r[10]:
+                    if "image" in str(r[11]):
+                        st.image(r[10])
+                    else:
+                        st.markdown(f"[Open PDF]({r[10]})")
+                else:
+                    st.info("No file uploaded")
+
             else:
                 st.error("Not Found")
 
