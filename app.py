@@ -1,14 +1,15 @@
 import streamlit as st
 import sqlite3
 import hashlib
-from datetime import datetime
 import pandas as pd
+from datetime import datetime
 import os
+import math
 
-# ================= PAGE =================
-st.set_page_config(page_title="AI Insurance System", layout="wide")
+# ================= PAGE CONFIG =================
+st.set_page_config(page_title="AI Insurance SaaS", layout="wide")
 
-# ================= DB RESET =================
+# ================= DB RESET (DEV ONLY) =================
 if os.path.exists("insurance.db"):
     os.remove("insurance.db")
 
@@ -24,20 +25,25 @@ def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("""CREATE TABLE IF NOT EXISTS users(
+    c.execute("""
+    CREATE TABLE users(
         email TEXT,
         password TEXT,
         role TEXT
-    )""")
+    )
+    """)
 
-    c.execute("""CREATE TABLE IF NOT EXISTS policies(
+    c.execute("""
+    CREATE TABLE policies(
         policy_number TEXT,
         policyholder_name TEXT,
         coverage_limit REAL,
         status TEXT
-    )""")
+    )
+    """)
 
-    c.execute("""CREATE TABLE IF NOT EXISTS claims(
+    c.execute("""
+    CREATE TABLE claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
         patient_name TEXT,
@@ -48,7 +54,8 @@ def init_db():
         fraud_reason TEXT,
         status TEXT,
         submission_date TEXT
-    )""")
+    )
+    """)
 
     users = [
         ("hospital@gmail.com", hash_password("hospital123"), "Hospital"),
@@ -63,72 +70,103 @@ def init_db():
 
 init_db()
 
-# ================= FRAUD =================
-def fraud_analyze(status, amount, limit):
+# ================= AI FRAUD ENGINE =================
+def fraud_engine(status, amount, limit, hospital):
     score = 0
     reasons = []
 
+    # Rule 1
     if status != "Active":
         score += 45
-        reasons.append("Policy inactive")
+        reasons.append("Policy inactive or expired")
 
-    if amount > limit:
-        score += 35
-        reasons.append("Exceeds coverage limit")
+    # Rule 2
+    if limit > 0:
+        ratio = amount / limit
 
-    if amount > limit * 0.8:
+        if ratio > 1:
+            score += 40
+            reasons.append("Claim exceeds coverage limit")
+
+        elif ratio > 0.8:
+            score += 25
+            reasons.append("High utilization of policy")
+
+    else:
+        score += 30
+        reasons.append("Unknown policy detected")
+
+    # Rule 3
+    if amount > 50000:
+        score += 20
+        reasons.append("High value claim anomaly")
+
+    # Rule 4
+    if "unknown" in hospital.lower():
         score += 15
-        reasons.append("High utilization")
+        reasons.append("Unverified hospital")
 
-    return min(score, 100), ", ".join(reasons) if reasons else "Normal"
+    if not reasons:
+        reasons.append("Normal behavior detected")
 
-# ================= STYLE =================
+    return min(score, 100), ", ".join(reasons)
+
+# ================= LOGIN =================
+if "login" not in st.session_state:
+    st.session_state.login = False
+    st.session_state.role = ""
+
+# ================= ENTERPRISE UI =================
 st.markdown("""
 <style>
 
-.main-title{
-    font-size:45px;
-    text-align:center;
+body {
+    background:#0b1220;
+    color:white;
+}
+
+.title {
+    font-size:42px;
     font-weight:900;
-    background: linear-gradient(90deg,#00c6ff,#0072ff,#ff00cc);
+    text-align:center;
+    background: linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
     -webkit-background-clip:text;
     -webkit-text-fill-color:transparent;
 }
 
-.subtitle{
-    text-align:center;
-    color:#94a3b8;
-    margin-bottom:20px;
-}
-
-/* CARD */
-.card{
-    background: linear-gradient(135deg,#0f172a,#1e293b);
+.kpi {
+    background: rgba(255,255,255,0.05);
     padding:18px;
-    border-radius:18px;
-    margin-bottom:12px;
-    box-shadow:0px 0px 15px rgba(0,198,255,0.2);
+    border-radius:16px;
+    text-align:center;
     border:1px solid rgba(255,255,255,0.08);
 }
 
-/* BUTTON */
-.stButton>button{
-    background: linear-gradient(90deg,#ff00cc,#3333ff,#00c6ff);
+.card {
+    background: rgba(255,255,255,0.04);
+    padding:16px;
+    border-radius:14px;
+    margin-bottom:10px;
+    border:1px solid rgba(255,255,255,0.08);
+}
+
+.high {color:#ff4d4d;font-weight:700;}
+.medium {color:#fbbf24;font-weight:700;}
+.low {color:#22c55e;font-weight:700;}
+
+.stButton>button {
+    background: linear-gradient(90deg,#6366f1,#06b6d4);
     color:white;
-    border-radius:12px;
-    padding:10px 18px;
-    font-weight:600;
+    border-radius:10px;
+    padding:8px 14px;
     border:none;
-    transition:0.3s;
 }
 
-.stButton>button:hover{
+.stButton>button:hover {
     transform:scale(1.05);
-    box-shadow:0px 0px 15px rgba(0,198,255,0.5);
 }
 
-/* SIDEBAR */
-section[data-testid="stSidebar"]{
+section[data-testid="stSidebar"] {
     background: linear-gradient(180deg,#0f172a,#111827);
 }
 
@@ -136,96 +174,99 @@ section[data-testid="stSidebar"]{
 """, unsafe_allow_html=True)
 
 # ================= LOGIN =================
-if "login" not in st.session_state:
-    st.session_state.login = False
-    st.session_state.role = ""
-
 if not st.session_state.login:
 
-    st.markdown('<div class="main-title">🏥 AI Insurance Fraud System</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Smart • Fast • Colorful • Fraud Detection Engine</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">AI Insurance Fraud SaaS</div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1,2,1])
+    email = st.text_input("Email")
+    pw = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
-    with col2:
-        st.markdown("### 🔐 Login Portal")
+    if st.button("Login"):
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
+                  (email, hash_password(pw), role))
+        user = c.fetchone()
 
-        email = st.text_input("📧 Email")
-        password = st.text_input("🔑 Password", type="password")
-        role = st.selectbox("👤 Role", ["Hospital", "Officer", "Policyholder"])
+        if user:
+            st.session_state.login = True
+            st.session_state.role = role
+            st.rerun()
+        else:
+            st.error("Invalid login")
 
-        if st.button("🚀 LOGIN NOW"):
-            conn = get_conn()
-            c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
-                      (email, hash_password(password), role))
-            user = c.fetchone()
-
-            if user:
-                st.session_state.login = True
-                st.session_state.role = role
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
-
-        st.info("Demo:\nhospital@gmail.com / hospital123\nofficer@gmail.com / officer123\nuser@gmail.com / user123")
-
-# ================= MAIN =================
+# ================= MAIN APP =================
 else:
 
-    st.sidebar.title("⚡ AI Insurance Panel")
-    st.sidebar.success(f"Logged in as: {st.session_state.role}")
+    st.sidebar.title("AI Insurance SaaS")
+    st.sidebar.write("Role:", st.session_state.role)
 
-    menu = st.sidebar.radio("Navigate",
-        ["🏠 Dashboard", "➕ Submit Claim", "🧑‍💼 Review", "🔎 Track"])
+    menu = st.sidebar.radio("Navigation",
+        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim"])
 
     conn = get_conn()
 
     # ================= DASHBOARD =================
-    if menu == "🏠 Dashboard":
-        st.markdown('<div class="main-title">Dashboard</div>', unsafe_allow_html=True)
+    if menu == "Dashboard":
+
+        st.markdown('<div class="title">Enterprise Risk Dashboard</div>', unsafe_allow_html=True)
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
         c1, c2, c3 = st.columns(3)
 
-        c1.metric("Total Claims", len(df))
-        c2.metric("High Risk", len(df[df["fraud_score"]>70]) if not df.empty else 0)
-        c3.metric("Safe", len(df[df["fraud_score"]<=40]) if not df.empty else 0)
+        c1.markdown(f"<div class='kpi'>Total<br><h2>{len(df)}</h2></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='kpi'>High Risk<br><h2>{len(df[df['fraud_score']>70]) if not df.empty else 0}</h2></div>", unsafe_allow_html=True)
+        c3.markdown(f"<div class='kpi'>Safe<br><h2>{len(df[df['fraud_score']<=40]) if not df.empty else 0}</h2></div>", unsafe_allow_html=True)
 
-        st.markdown("### 📊 Latest Claims")
+        st.markdown("---")
 
-        for _, r in df.iterrows():
-            color = "🔴" if r["fraud_score"]>70 else "🟡" if r["fraud_score"]>40 else "🟢"
+        st.subheader("Live Claim Feed")
+
+        for _, r in df.tail(10).iterrows():
+
+            if r["fraud_score"] > 70:
+                tag = "HIGH RISK"
+                cls = "high"
+            elif r["fraud_score"] > 40:
+                tag = "MEDIUM"
+                cls = "medium"
+            else:
+                tag = "LOW"
+                cls = "low"
 
             st.markdown(f"""
             <div class="card">
-                {color} <b>Claim ID:</b> {r['claim_id']} <br>
-                <b>Policy:</b> {r['policy_number']} <br>
-                <b>Amount:</b> ${r['claim_amount']} <br>
-                <b>Fraud Score:</b> {r['fraud_score']} <br>
-                <b>Reason:</b> {r['fraud_reason']} <br>
-                <b>Status:</b> {r['status']}
+                <b>ID:</b> {r['claim_id']} | 
+                <span class="{cls}">{tag}</span><br><br>
+
+                Policy: {r['policy_number']}<br>
+                Amount: {r['claim_amount']}<br>
+                Fraud Score: {r['fraud_score']}<br>
+                Reason: {r['fraud_reason']}<br>
+                Status: {r['status']}
             </div>
             """, unsafe_allow_html=True)
 
     # ================= SUBMIT =================
-    elif menu == "➕ Submit Claim":
-        st.title("Submit Claim")
+    elif menu == "Submit Claim":
 
         if st.session_state.role != "Hospital":
             st.warning("Access Denied")
         else:
-            with st.form("claim"):
+            st.title("Submit Claim")
+
+            with st.form("f"):
                 p = st.text_input("Policy Number")
                 n = st.text_input("Patient Name")
-                h = st.text_input("Hospital Name")
-                t = st.text_input("Treatment Type")
-                a = st.number_input("Claim Amount", min_value=0.0)
+                h = st.text_input("Hospital")
+                t = st.text_input("Treatment")
+                a = st.number_input("Amount", min_value=0.0)
 
-                submit = st.form_submit_button("🚀 Submit Claim")
+                ok = st.form_submit_button("Submit")
 
-                if submit:
+                if ok:
                     cur = conn.cursor()
                     cur.execute("SELECT coverage_limit,status FROM policies WHERE policy_number=?",(p,))
                     pol = cur.fetchone()
@@ -235,45 +276,54 @@ else:
                     else:
                         limit, status = 0, "Unknown"
 
-                    score, reason = fraud_analyze(status,a,limit)
+                    score, reason = fraud_engine(status,a,limit,h)
 
-                    status_final = "Rejected" if score > 70 else "Pending"
+                    final_status = "Rejected" if score > 70 else "Pending"
 
                     cur.execute("""
-                        INSERT INTO claims VALUES(NULL,?,?,?,?,?,?,?,?,?)
-                    """,(p,n,h,t,a,score,reason,status_final,datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?)
+                    """,(p,n,h,t,a,score,reason,final_status,
+                         datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
                     conn.commit()
-                    st.success("Claim Submitted Successfully 🎉")
+                    st.success("Claim Submitted")
+
+                    st.info(f"Fraud Score: {score}")
+                    st.warning(f"Reason: {reason}")
 
     # ================= REVIEW =================
-    elif menu == "🧑‍💼 Review":
-        st.title("Officer Review Panel")
+    elif menu == "Review Claims":
 
-        df = pd.read_sql("SELECT * FROM claims", conn)
-        st.dataframe(df, use_container_width=True)
+        if st.session_state.role != "Officer":
+            st.warning("Access Denied")
+        else:
+            st.title("Officer Panel")
 
-        cid = st.number_input("Claim ID",1)
+            df = pd.read_sql("SELECT * FROM claims", conn)
+            st.dataframe(df, use_container_width=True)
 
-        col1, col2 = st.columns(2)
+            cid = st.number_input("Claim ID",1)
 
-        if col1.button("✅ Approve"):
-            conn.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (cid,))
-            conn.commit()
-            st.success("Approved")
+            col1, col2 = st.columns(2)
 
-        if col2.button("❌ Reject"):
-            conn.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?", (cid,))
-            conn.commit()
-            st.error("Rejected")
+            if col1.button("Approve"):
+                conn.execute("UPDATE claims SET status='Approved' WHERE claim_id=?", (cid,))
+                conn.commit()
+                st.success("Approved")
+
+            if col2.button("Reject"):
+                conn.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?", (cid,))
+                conn.commit()
+                st.error("Rejected")
 
     # ================= TRACK =================
-    elif menu == "🔎 Track":
+    elif menu == "Track Claim":
+
         st.title("Track Claim")
 
         cid = st.number_input("Claim ID",1)
 
-        if st.button("Search 🔍"):
+        if st.button("Search"):
             cur = conn.cursor()
             cur.execute("SELECT * FROM claims WHERE claim_id=?", (cid,))
             r = cur.fetchone()
