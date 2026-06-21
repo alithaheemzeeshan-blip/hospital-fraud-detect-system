@@ -5,8 +5,8 @@ import pandas as pd
 from datetime import datetime
 import os
 
-# ================= CONFIG =================
-st.set_page_config(page_title="AI Insurance System", layout="wide")
+# ================= PAGE CONFIG =================
+st.set_page_config(page_title="Smart Health Insurance System", layout="wide")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -24,7 +24,7 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ================= AI FRAUD MODEL =================
+# ================= AI FRAUD =================
 def ai_fraud_model(amount, limit, hospital):
     score = 0
     reasons = []
@@ -52,7 +52,7 @@ def ai_decision(score):
     else:
         return "Approved", "Low risk"
 
-# ================= EMAIL SIMULATION =================
+# ================= EMAIL SIM =================
 def send_email(to, subject, msg):
     st.info(f"""
 📧 EMAIL (SIMULATION)
@@ -97,13 +97,11 @@ def init_db():
 
     conn.commit()
 
-    # safe migration
     try:
         c.execute("ALTER TABLE claims ADD COLUMN submitted_by TEXT")
     except:
         pass
 
-    # demo users
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -118,93 +116,146 @@ def init_db():
 
 init_db()
 
-# ================= STYLE =================
+# ================= ORIGINAL UI STYLE (RESTORED) =================
 st.markdown("""
 <style>
-.title{
-text-align:center;
-font-size:40px;
-font-weight:bold;
-background:linear-gradient(90deg,#00c6ff,#7a00ff);
--webkit-background-clip:text;
--webkit-text-fill-color:transparent;
+
+body {
+    background:#0b1220;
+    color:white;
 }
 
-.card{
-background:rgba(255,255,255,0.05);
-padding:12px;
-border-radius:10px;
-margin:10px 0;
+.title {
+    text-align:center;
+    font-size:42px;
+    font-weight:900;
+    background: linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
 }
+
+.card {
+    background: rgba(255,255,255,0.04);
+    padding:15px;
+    border-radius:15px;
+    margin-bottom:10px;
+    border:1px solid rgba(255,255,255,0.08);
+}
+
+.high{color:#ff4d4d;font-weight:800;}
+.medium{color:#fbbf24;font-weight:800;}
+.low{color:#22c55e;font-weight:800;}
+
+.stButton>button {
+    background: linear-gradient(90deg,#4f46e5,#06b6d4);
+    color:white;
+    border-radius:10px;
+    padding:8px 14px;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">AI Insurance System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
 
-    email = st.text_input("Email")
-    pw = st.text_input("Password", type="password")
-    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
+    col1, col2, col3 = st.columns([1,2,1])
 
-    if st.button("Login"):
-        conn = get_conn()
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
-                  (email, hash_password(pw), role))
+    with col2:
+        st.subheader("🔐 Login Panel")
 
-        if c.fetchone():
-            st.session_state.login = True
-            st.session_state.email = email
-            st.session_state.role = role
-            st.rerun()
-        else:
-            st.error("Invalid login")
+        email = st.text_input("Email")
+        pw = st.text_input("Password", type="password")
+        role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
-    st.markdown("""
-    ### Demo Credentials
-    Hospital: hospital@gmail.com / hospital123  
-    Officer: officer@gmail.com / officer123  
-    Policyholder: user@gmail.com / user123
-    """)
+        if st.button("Login"):
+            conn = get_conn()
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
+                      (email, hash_password(pw), role))
+            user = c.fetchone()
+
+            if user:
+                st.session_state.login = True
+                st.session_state.role = role
+                st.session_state.email = email
+                st.rerun()
+            else:
+                st.error("Invalid login")
+
+        st.markdown("""
+        <div class="card">
+        <b>🔑 Demo Credentials</b><br><br>
+        Hospital: hospital@gmail.com / hospital123<br>
+        Officer: officer@gmail.com / officer123<br>
+        Policyholder: user@gmail.com / user123
+        </div>
+        """, unsafe_allow_html=True)
 
 # ================= MAIN APP =================
 else:
 
-    st.sidebar.title("Insurance System")
+    st.sidebar.title("🏥 Smart Insurance System")
     st.sidebar.write(st.session_state.email)
     st.sidebar.write(st.session_state.role)
 
-    # 🚪 LOGOUT FIX
-    if st.sidebar.button("Logout"):
+    # 🚪 LOGOUT RESTORED
+    if st.sidebar.button("🚪 Logout"):
         st.session_state.login = False
         st.session_state.email = ""
         st.session_state.role = ""
         st.rerun()
 
-    # ================= ROLE MENU =================
+    # ================= MENU =================
     if st.session_state.role == "Policyholder":
-        menu = st.sidebar.radio("Menu",
-            ["Dashboard", "Submit Claim", "My Claims", "Track", "Analytics"])
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "My Claims", "Track Claim", "Analytics"]
+        )
 
     elif st.session_state.role == "Hospital":
-        menu = st.sidebar.radio("Menu",
-            ["Dashboard", "Submit Claim", "Review Claims", "Analytics"])
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "Review Claims", "Analytics"]
+        )
 
     else:
-        menu = st.sidebar.radio("Menu",
-            ["Dashboard", "Review Claims", "Officer Analytics", "Track", "Analytics"])
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Review Claims", "Officer Analytics", "Track Claim", "Analytics"]
+        )
 
     conn = get_conn()
 
     # ================= DASHBOARD =================
     if menu == "Dashboard":
-        st.title("Dashboard")
+
+        st.markdown('<div class="title">Enterprise AI Dashboard</div>', unsafe_allow_html=True)
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
-        st.metric("Total Claims", len(df))
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Claims", len(df))
+        c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
+
+        if not df.empty:
+            for _, r in df.tail(6).iterrows():
+
+                level = "high" if r["fraud_score"] > 70 else "medium" if r["fraud_score"] > 40 else "low"
+
+                st.markdown(f"""
+                <div class="card">
+                    <b>Claim ID:</b> {r['claim_id']} |
+                    <span class="{level}">{r['fraud_score']}%</span><br><br>
+                    🏥 {r['hospital']}<br>
+                    💊 {r['treatment']}<br>
+                    💰 {r['claim_amount']}<br>
+                    📌 {r['status']}
+                </div>
+                """, unsafe_allow_html=True)
 
     # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
@@ -212,10 +263,10 @@ else:
         st.title("Submit Claim")
 
         p = st.text_input("Policy Number")
-        patient = st.text_input("Patient")
-        hospital = st.text_input("Hospital")
-        treatment = st.text_input("Treatment")
-        amount = st.number_input("Amount", 0.0)
+        patient = st.text_input("Patient Name")
+        hospital = st.text_input("Hospital Name")
+        treatment = st.text_input("Treatment Type")
+        amount = st.number_input("Claim Amount", min_value=0.0)
 
         if st.button("Submit"):
 
@@ -228,13 +279,14 @@ else:
                 p, patient, hospital, treatment, amount,
                 score, reason,
                 "Pending",
-                datetime.now().strftime("%Y-%m-%d"),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 None, None,
                 st.session_state.email
             ))
 
             conn.commit()
             st.success("Claim Submitted")
+            st.info(reason)
 
     # ================= REVIEW CLAIMS =================
     elif menu == "Review Claims":
@@ -247,7 +299,9 @@ else:
 
             st.markdown(f"""
             <div class="card">
-            ID: {r['claim_id']} | Score: {r['fraud_score']} | Status: {r['status']}
+                <b>Claim ID:</b> {r['claim_id']} |
+                <span class="medium">{r['fraud_score']}%</span><br>
+                📌 {r['status']}
             </div>
             """, unsafe_allow_html=True)
 
@@ -260,8 +314,7 @@ else:
                 with col1:
                     if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
                         cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
-                                    (r['claim_id'],))
+                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",(r['claim_id'],))
                         conn.commit()
                         send_email(r.get("submitted_by","user"),"Approved","Claim Approved")
                         st.rerun()
@@ -269,8 +322,7 @@ else:
                 with col2:
                     if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
                         cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
-                                    (r['claim_id'],))
+                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",(r['claim_id'],))
                         conn.commit()
                         send_email(r.get("submitted_by","user"),"Rejected","Claim Rejected")
                         st.rerun()
@@ -307,8 +359,8 @@ else:
 
         st.bar_chart(df["fraud_score"])
 
-    # ================= TRACK =================
-    elif menu == "Track":
+    # ================= TRACK CLAIM =================
+    elif menu == "Track Claim":
 
         st.title("Track Claim")
 
@@ -322,15 +374,12 @@ else:
     # ================= ANALYTICS =================
     elif menu == "Analytics":
 
-        st.title("Analytics")
+        st.title("Analytics Dashboard")
 
         df = pd.read_sql("SELECT * FROM claims", conn)
 
-        # SAFE COLUMN CHECK (FIX YOUR ERROR)
-        if "fraud_score" in df.columns:
+        if not df.empty:
             st.bar_chart(df["fraud_score"])
-
-        if "claim_amount" in df.columns:
             st.line_chart(df["claim_amount"])
 
     conn.close()
