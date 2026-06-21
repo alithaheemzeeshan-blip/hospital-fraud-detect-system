@@ -90,7 +90,7 @@ def ai_fraud_model(amount, limit, hospital):
 
     return min(score, 100), ", ".join(reasons) if reasons else "Normal"
 
-# ================= UI STYLE =================
+# ================= STYLE =================
 st.markdown("""
 <style>
 body {
@@ -132,13 +132,15 @@ body {
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">Smart Health Insurance System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">🏥 Smart Health Insurance System 💙</div>', unsafe_allow_html=True)
 
-    email = st.text_input("Email")
-    pw = st.text_input("Password", type="password")
-    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
+    st.markdown('<div class="card">🔐 Login to access your dashboard</div>', unsafe_allow_html=True)
 
-    if st.button("Login"):
+    email = st.text_input("📧 Email")
+    pw = st.text_input("🔑 Password", type="password")
+    role = st.selectbox("👤 Role", ["Hospital", "Officer", "Policyholder"])
+
+    if st.button("🚀 Login"):
         conn = get_conn()
         c = conn.cursor()
         c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
@@ -150,15 +152,33 @@ if not st.session_state.login:
             st.session_state.role = role
             st.rerun()
         else:
-            st.error("Invalid credentials")
+            st.error("❌ Invalid credentials")
 
-# ================= MAIN =================
+    st.markdown("---")
+
+    st.markdown("""
+    ### 🔑 Demo Login Credentials
+
+    🏥 **Hospital**
+    - 📧 hospital@gmail.com
+    - 🔑 hospital123
+
+    🕵️ **Officer**
+    - 📧 officer@gmail.com
+    - 🔑 officer123
+
+    👨‍⚕️ **Policyholder**
+    - 📧 user@gmail.com
+    - 🔑 user123
+    """)
+
+# ================= MAIN APP =================
 else:
 
-    st.sidebar.title("Insurance System")
+    st.sidebar.title("🏥 Insurance System")
     st.sidebar.write(st.session_state.email)
 
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("🚪 Logout"):
         st.session_state.login = False
         st.rerun()
 
@@ -174,46 +194,77 @@ else:
 
     # ================= DASHBOARD =================
     if menu == "Dashboard":
-        st.title("Dashboard")
+        st.title("📊 Dashboard")
 
-        st.metric("Total Claims", len(df))
-        st.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        st.metric("📄 Total Claims", len(df))
+        st.metric("⚠️ High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
 
     # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
-        st.title("Submit Claim")
+        st.title("📝 Submit Claim")
 
-        p = st.text_input("Policy Number")
-        patient = st.text_input("Patient Name")
-        hospital = st.text_input("Hospital Name")
-        treatment = st.text_input("Treatment Type")
-        amount = st.number_input("Claim Amount", min_value=0.0)
+        p = st.text_input("📄 Policy Number")
+        patient = st.text_input("👤 Patient Name")
+        hospital = st.text_input("🏥 Hospital Name")
 
-        if st.button("Submit"):
+        treatment = st.selectbox(
+            "🏥 Treatment Type",
+            [
+                "General Checkup",
+                "Emergency Treatment",
+                "Surgery",
+                "Heart Surgery",
+                "Cancer Treatment",
+                "Dialysis",
+                "Maternity Care",
+                "Dental Treatment",
+                "Eye Surgery",
+                "Orthopedic Surgery",
+                "Physiotherapy",
+                "COVID-19 Treatment",
+                "Neurology Treatment",
+                "Skin Treatment",
+                "ENT Treatment",
+                "Other"
+            ]
+        )
+
+        amount = st.number_input("💰 Claim Amount", min_value=0.0)
+
+        if st.button("📤 Submit Claim"):
+
             score, reason = ai_fraud_model(amount, 50000, hospital)
 
             cur = conn.cursor()
             cur.execute("""
             INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
-                p, patient, hospital, treatment, amount,
-                score, reason, "Pending",
+                p,
+                patient,
+                hospital,
+                treatment,
+                amount,
+                score,
+                reason,
+                "Pending",
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                None, None, st.session_state.email
+                None,
+                None,
+                st.session_state.email
             ))
 
             conn.commit()
-            st.success("Claim Submitted")
+            st.success("✅ Claim Submitted Successfully")
 
-    # ================= REVIEW CLAIMS (RISK + REASON ADDED) =================
+    # ================= REVIEW CLAIMS =================
     elif menu == "Review Claims":
 
-        st.title("Officer Panel")
+        st.title("🕵️ Officer Panel")
 
         for _, r in df.iterrows():
 
-            score = r["fraud_score"] if "fraud_score" in df.columns else 0
+            score = r["fraud_score"]
 
             if score < 40:
                 risk = "LOW"
@@ -243,7 +294,7 @@ else:
                 c1, c2 = st.columns(2)
 
                 with c1:
-                    if st.button(f"✅ Accept {r['claim_id']}", key=f"a{r['claim_id']}"):
+                    if st.button(f"✅ Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
                         cur = conn.cursor()
                         cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
                                     (r["claim_id"],))
@@ -258,24 +309,24 @@ else:
                         conn.commit()
                         st.rerun()
 
-    # ================= TRACK =================
+    # ================= TRACK CLAIM =================
     elif menu == "Track Claim":
 
-        st.title("Track Claim")
+        st.title("📍 Track Claim")
 
-        cid = st.number_input("Claim ID", min_value=1)
+        cid = st.number_input("Enter Claim ID", min_value=1)
 
         if st.button("Search"):
             cur = conn.cursor()
             cur.execute("SELECT * FROM claims WHERE claim_id=?", (cid,))
             r = cur.fetchone()
 
-            st.write(r if r else "Not Found")
+            st.write(r if r else "❌ Not Found")
 
     # ================= ANALYTICS =================
     elif menu == "Analytics":
 
-        st.title("Analytics")
+        st.title("📈 Analytics")
 
         if not df.empty:
             st.bar_chart(df["fraud_score"])
