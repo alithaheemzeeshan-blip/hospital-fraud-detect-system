@@ -24,7 +24,7 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ================= AI FRAUD =================
+# ================= AI FRAUD MODEL =================
 def ai_fraud_model(amount, limit, hospital):
     score = 0
     reasons = []
@@ -64,7 +64,7 @@ Message:
 {msg}
 """)
 
-# ================= INIT DB =================
+# ================= INIT DB (FIXED SCHEMA) =================
 def init_db():
     conn = get_conn()
     c = conn.cursor()
@@ -81,14 +81,14 @@ def init_db():
     CREATE TABLE IF NOT EXISTS claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
-        patient TEXT,
-        hospital TEXT,
+        patient_name TEXT,
+        hospital_name TEXT,
         treatment TEXT,
         claim_amount REAL,
         fraud_score REAL,
-        reason TEXT,
+        fraud_reason TEXT,
         status TEXT,
-        date TEXT,
+        submission_date TEXT,
         file_path TEXT,
         file_type TEXT,
         submitted_by TEXT
@@ -97,11 +97,13 @@ def init_db():
 
     conn.commit()
 
+    # safe migration (prevents crash on old DB)
     try:
         c.execute("ALTER TABLE claims ADD COLUMN submitted_by TEXT")
     except:
         pass
 
+    # demo users
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -116,7 +118,7 @@ def init_db():
 
 init_db()
 
-# ================= ORIGINAL UI STYLE (RESTORED) =================
+# ================= STYLE (ORIGINAL GUI RESTORED) =================
 st.markdown("""
 <style>
 
@@ -175,19 +177,18 @@ if not st.session_state.login:
             c = conn.cursor()
             c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
                       (email, hash_password(pw), role))
-            user = c.fetchone()
 
-            if user:
+            if c.fetchone():
                 st.session_state.login = True
-                st.session_state.role = role
                 st.session_state.email = email
+                st.session_state.role = role
                 st.rerun()
             else:
                 st.error("Invalid login")
 
         st.markdown("""
         <div class="card">
-        <b>🔑 Demo Credentials</b><br><br>
+        <b>Demo Credentials</b><br><br>
         Hospital: hospital@gmail.com / hospital123<br>
         Officer: officer@gmail.com / officer123<br>
         Policyholder: user@gmail.com / user123
@@ -201,14 +202,14 @@ else:
     st.sidebar.write(st.session_state.email)
     st.sidebar.write(st.session_state.role)
 
-    # 🚪 LOGOUT RESTORED
+    # 🚪 LOGOUT FIXED
     if st.sidebar.button("🚪 Logout"):
         st.session_state.login = False
         st.session_state.email = ""
         st.session_state.role = ""
         st.rerun()
 
-    # ================= MENU =================
+    # ================= ROLE MENU =================
     if st.session_state.role == "Policyholder":
         menu = st.sidebar.radio(
             "Navigation",
@@ -250,10 +251,12 @@ else:
                 <div class="card">
                     <b>Claim ID:</b> {r['claim_id']} |
                     <span class="{level}">{r['fraud_score']}%</span><br><br>
-                    🏥 {r['hospital']}<br>
-                    💊 {r['treatment']}<br>
-                    💰 {r['claim_amount']}<br>
-                    📌 {r['status']}
+
+                    🏥 Hospital: {r['hospital_name']}<br>
+                    👤 Patient: {r['patient_name']}<br>
+                    💊 Treatment: {r['treatment']}<br>
+                    💰 Amount: {r['claim_amount']}<br>
+                    📌 Status: {r['status']}
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -301,7 +304,8 @@ else:
             <div class="card">
                 <b>Claim ID:</b> {r['claim_id']} |
                 <span class="medium">{r['fraud_score']}%</span><br>
-                📌 {r['status']}
+                🏥 {r['hospital_name']} | 👤 {r['patient_name']}<br>
+                📌 Status: {r['status']}
             </div>
             """, unsafe_allow_html=True)
 
