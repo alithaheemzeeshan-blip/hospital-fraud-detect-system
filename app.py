@@ -24,14 +24,14 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ================= SAFE GET =================
+# ================= SAFE ACCESS =================
 def safe(r, *keys):
     for k in keys:
         if k in r:
             return r[k]
     return "N/A"
 
-# ================= AI =================
+# ================= AI MODEL =================
 def ai_fraud_model(amount, limit, hospital):
     score = 0
     reasons = []
@@ -151,39 +151,30 @@ if not st.session_state.login:
         else:
             st.error("Invalid login")
 
-    st.markdown("""
-    <div class="card">
-    Demo Login:<br>
-    Hospital: hospital@gmail.com / hospital123<br>
-    Officer: officer@gmail.com / officer123<br>
-    Policyholder: user@gmail.com / user123
-    </div>
-    """, unsafe_allow_html=True)
-
-# ================= MAIN APP =================
+# ================= MAIN =================
 else:
 
     st.sidebar.title("🏥 Smart Insurance System")
     st.sidebar.write(st.session_state.email)
     st.sidebar.write(st.session_state.role)
 
-    if st.sidebar.button("🚪 Logout"):
+    if st.sidebar.button("Logout"):
         st.session_state.login = False
         st.rerun()
 
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    # ================= ROLE MENU =================
+    # ================= MENU =================
     if st.session_state.role == "Officer":
         menu = st.sidebar.radio(
             "Navigation",
-            ["Dashboard", "Review Claims", "Analytics"]
+            ["Dashboard", "Review Claims", "Track Claim", "Analytics"]
         )
     else:
         menu = st.sidebar.radio(
             "Navigation",
-            ["Dashboard", "Submit Claim", "Analytics"]
+            ["Dashboard", "Submit Claim", "Track Claim", "Analytics"]
         )
 
     # ================= DASHBOARD =================
@@ -196,104 +187,104 @@ else:
         c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
         c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
 
-        if not df.empty:
-            for _, r in df.tail(6).iterrows():
-
-                level = "high" if r["fraud_score"] > 70 else "medium" if r["fraud_score"] > 40 else "low"
-
-                st.markdown(f"""
-                <div class="card">
-                    <b>ID:</b> {safe(r,'claim_id')} |
-                    <span class="{level}">{safe(r,'fraud_score')}%</span><br><br>
-
-                    🏥 {safe(r,'hospital_name')}<br>
-                    👤 {safe(r,'patient_name')}<br>
-                    💊 {safe(r,'treatment')}<br>
-                    💰 {safe(r,'claim_amount')}<br>
-                    📌 {safe(r,'status')}
-                </div>
-                """, unsafe_allow_html=True)
-
-    # ================= SUBMIT CLAIM (ONLY NON-OFFICER) =================
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
-        if st.session_state.role == "Officer":
-            st.warning("Access Denied")
-        else:
+        st.title("Submit Claim")
 
-            st.title("Submit Claim")
+        p = st.text_input("Policy Number")
+        patient = st.text_input("Patient Name")
+        hospital = st.text_input("Hospital Name")
+        treatment = st.text_input("Treatment Type")
+        amount = st.number_input("Claim Amount", min_value=0.0)
 
-            p = st.text_input("Policy Number")
-            patient = st.text_input("Patient Name")
-            hospital = st.text_input("Hospital Name")
+        if st.button("Submit"):
 
-            treatment = st.selectbox("Treatment Type", [
-                "General Checkup","Emergency Care","Surgery","Cardiology",
-                "Orthopedic","Neurology","Dental","Maternity","Radiology","ICU"
-            ])
+            score, reason = ai_fraud_model(amount, 50000, hospital)
 
-            amount = st.number_input("Claim Amount", min_value=0.0)
+            cur = conn.cursor()
+            cur.execute("""
+            INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                p, patient, hospital, treatment, amount,
+                score, reason,
+                "Pending",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                None, None,
+                st.session_state.email
+            ))
 
-            if st.button("Submit"):
+            conn.commit()
+            st.success("Claim Submitted")
 
-                score, reason = ai_fraud_model(amount, 50000, hospital)
-
-                cur = conn.cursor()
-                cur.execute("""
-                INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
-                """, (
-                    p, patient, hospital, treatment, amount,
-                    score, reason,
-                    "Pending",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    None, None,
-                    st.session_state.email
-                ))
-
-                conn.commit()
-                st.success("Claim Submitted")
-
-    # ================= REVIEW CLAIMS (OFFICER ONLY) =================
+    # ================= REVIEW CLAIMS (OFFICER) =================
     elif menu == "Review Claims":
 
-        if st.session_state.role != "Officer":
-            st.warning("Access Denied")
+        st.title("Officer Review Panel")
 
-        else:
+        for _, r in df.iterrows():
 
-            st.title("Officer Review Panel")
+            st.markdown(f"""
+            <div class="card">
+                <b>ID:</b> {safe(r,'claim_id')} |
+                <span class="medium">{safe(r,'fraud_score')}%</span><br>
+                🏥 {safe(r,'hospital_name')} | 👤 {safe(r,'patient_name')}<br>
+                💊 {safe(r,'treatment')}<br>
+                📌 {safe(r,'status')}
+            </div>
+            """, unsafe_allow_html=True)
 
-            for _, r in df.iterrows():
+            if r["status"] == "Pending":
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
+                                    (r['claim_id'],))
+                        conn.commit()
+                        st.rerun()
+
+                with col2:
+                    if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                                    (r['claim_id'],))
+                        conn.commit()
+                        st.rerun()
+
+    # ================= TRACK CLAIM (NEW FEATURE) =================
+    elif menu == "Track Claim":
+
+        st.title("Track Claim Status")
+
+        cid = st.number_input("Enter Claim ID", min_value=1)
+
+        if st.button("Search Claim"):
+
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM claims WHERE claim_id=?", (cid,))
+            r = cur.fetchone()
+
+            if r:
+                st.success("Claim Found")
 
                 st.markdown(f"""
                 <div class="card">
-                    <b>ID:</b> {safe(r,'claim_id')} |
-                    <span class="medium">{safe(r,'fraud_score')}%</span><br>
-                    🏥 {safe(r,'hospital_name')} | 👤 {safe(r,'patient_name')}<br>
-                    💊 {safe(r,'treatment')}<br>
-                    📌 {safe(r,'status')}
+                    <b>Claim ID:</b> {r[0]}<br>
+                    🏥 Hospital: {r[3]}<br>
+                    👤 Patient: {r[2]}<br>
+                    💊 Treatment: {r[4]}<br>
+                    💰 Amount: {r[5]}<br>
+                    🧠 Fraud Score: {r[6]}%<br>
+                    📌 Status: {r[8]}<br>
+                    📅 Date: {r[9]}
                 </div>
                 """, unsafe_allow_html=True)
 
-                if r["status"] == "Pending":
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
-                            cur = conn.cursor()
-                            cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
-                                        (r['claim_id'],))
-                            conn.commit()
-                            st.rerun()
-
-                    with col2:
-                        if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
-                            cur = conn.cursor()
-                            cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
-                                        (r['claim_id'],))
-                            conn.commit()
-                            st.rerun()
+            else:
+                st.error("Claim Not Found")
 
     # ================= ANALYTICS =================
     elif menu == "Analytics":
