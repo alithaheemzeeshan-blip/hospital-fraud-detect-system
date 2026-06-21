@@ -71,9 +71,8 @@ def init_db():
 
 init_db()
 
-# ================= FRAUD MODEL (FIXED) =================
+# ================= FRAUD MODEL =================
 def ai_fraud_model(amount, limit, hospital):
-
     score = 0
     reasons = []
 
@@ -160,22 +159,12 @@ if not st.session_state.login:
         else:
             st.error("❌ Invalid credentials")
 
-    st.markdown("---")
-    st.markdown("""
-### 🔑 Demo Logins
-
-🏥 Hospital → hospital@gmail.com / hospital123  
-🕵️ Officer → officer@gmail.com / officer123  
-👨‍⚕️ User → user@gmail.com / user123
-""")
-
-# ================= MAIN =================
+# ================= MAIN APP =================
 else:
 
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    # FIX: ensure numeric (THIS fixes your 0 risk problem)
     if not df.empty:
         df["fraud_score"] = pd.to_numeric(df["fraud_score"], errors="coerce").fillna(0)
 
@@ -190,7 +179,7 @@ else:
         ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
     )
 
-    # ================= DASHBOARD (IMPROVED) =================
+    # ================= DASHBOARD =================
     if menu == "Dashboard":
         st.markdown('<div class="title">📊 Dashboard</div>', unsafe_allow_html=True)
 
@@ -208,7 +197,7 @@ else:
         c4.markdown(f"<div class='stat'>⏳<br><b>{pending}</b><br>Pending</div>", unsafe_allow_html=True)
         c5.markdown(f"<div class='stat'>⚠️<br><b>{high_risk}</b><br>High Risk</div>", unsafe_allow_html=True)
 
-    # ================= SUBMIT CLAIM (WITH IMAGE UPLOAD) =================
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
         st.title("📝 Submit Claim")
@@ -226,8 +215,7 @@ else:
 
         uploaded_file = st.file_uploader("📤 Upload Medical Report (Image/PDF)")
 
-        file_path = None
-        file_type = None
+        file_path, file_type = None, None
 
         if uploaded_file is not None:
             file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
@@ -253,65 +241,54 @@ else:
             conn.commit()
             st.success("✅ Claim Submitted")
 
-    # ================= REVIEW =================
-elif menu == "Review Claims":
+    # ================= REVIEW CLAIMS =================
+    elif menu == "Review Claims":
 
-    st.title("🕵️ Officer Panel")
+        st.title("🕵️ Officer Panel")
 
-    for _, r in df.iterrows():
+        for _, r in df.iterrows():
 
-        score = float(r["fraud_score"])
+            score = float(r["fraud_score"])
 
-        if score < 40:
-            risk = "LOW"
-            cls = "low"
-        elif score < 70:
-            risk = "MEDIUM"
-            cls = "medium"
-        else:
-            risk = "HIGH"
-            cls = "high"
+            if score < 40:
+                risk, cls = "LOW", "low"
+            elif score < 70:
+                risk, cls = "MEDIUM", "medium"
+            else:
+                risk, cls = "HIGH", "high"
 
-        st.markdown(f"""
-        <div class="card">
-            <b>ID:</b> {r['claim_id']} |
-            <b>Patient:</b> {r['patient_name']} |
-            <b>Hospital:</b> {r['hospital_name']}<br>
-            <b>Treatment:</b> {r['treatment']}<br>
-            <b>Score:</b> {score}% <span class="{cls}">{risk}</span><br>
-            <b>Status:</b> {r['status']}<br>
-            <b>Reason:</b> {r['fraud_reason']}
-        </div>
-        """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="card">
+                <b>ID:</b> {r['claim_id']} |
+                <b>Patient:</b> {r['patient_name']} |
+                <b>Hospital:</b> {r['hospital_name']}<br>
+                <b>Treatment:</b> {r['treatment']}<br>
+                <b>Score:</b> {score}% <span class="{cls}">{risk}</span><br>
+                <b>Status:</b> {r['status']}<br>
+                <b>Reason:</b> {r['fraud_reason']}
+            </div>
+            """, unsafe_allow_html=True)
 
-        # ✅ ADD BACK ACTION BUTTONS
-        if r["status"] == "Pending":
+            if r["status"] == "Pending":
+                c1, c2 = st.columns(2)
 
-            c1, c2 = st.columns(2)
+                with c1:
+                    if st.button(f"✅ Approve {r['claim_id']}", key=f"ap{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
+                                    (r["claim_id"],))
+                        conn.commit()
+                        st.rerun()
 
-            with c1:
-                if st.button(f"✅ Approve {r['claim_id']}", key=f"ap{r['claim_id']}"):
-                    cur = conn.cursor()
-                    cur.execute(
-                        "UPDATE claims SET status='Approved' WHERE claim_id=?",
-                        (r["claim_id"],)
-                    )
-                    conn.commit()
-                    st.success("Claim Approved")
-                    st.rerun()
+                with c2:
+                    if st.button(f"❌ Reject {r['claim_id']}", key=f"re{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                                    (r["claim_id"],))
+                        conn.commit()
+                        st.rerun()
 
-            with c2:
-                if st.button(f"❌ Reject {r['claim_id']}", key=f"re{r['claim_id']}"):
-                    cur = conn.cursor()
-                    cur.execute(
-                        "UPDATE claims SET status='Rejected' WHERE claim_id=?",
-                        (r["claim_id"],)
-                    )
-                    conn.commit()
-                    st.error("Claim Rejected")
-                    st.rerun()
-
-    # ================= TRACK =================
+    # ================= TRACK CLAIM =================
     elif menu == "Track Claim":
 
         st.title("📍 Track Claim")
