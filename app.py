@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Smart Insurance", layout="centered")
+st.set_page_config(page_title="Smart Health Insurance System", layout="centered")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -23,12 +23,6 @@ def get_conn():
 
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
-
-def safe(r, *keys):
-    for k in keys:
-        if k in r:
-            return r[k]
-    return "N/A"
 
 # ================= AI MODEL =================
 def ai_fraud_model(amount, limit, hospital):
@@ -96,64 +90,75 @@ def init_db():
 
 init_db()
 
-# ================= CLEAN UI =================
+# ================= IMPROVED COLORFUL UI =================
 st.markdown("""
 <style>
 
-/* APP BACKGROUND */
 body {
-    background: #0b1220;
+    background: linear-gradient(135deg,#0f172a,#1e293b,#0b1220);
     color: white;
 }
 
-/* REMOVE STREAMLIT TOP SPACE */
-.block-container {
-    padding-top: 1rem;
-    padding-bottom: 1rem;
-}
-
-/* TITLE (COMPACT) */
+/* APP TITLE (ORIGINAL NAME RESTORED) */
 .title {
     text-align:center;
-    font-size:30px;
-    font-weight:800;
-    margin-bottom:2px;
-    color: white;
-}
-
-/* SUBTITLE */
-.subtitle {
-    text-align:center;
-    font-size:12px;
-    color:#94a3b8;
-    margin-bottom:10px;
+    font-size:34px;
+    font-weight:900;
+    margin-top:10px;
+    background: linear-gradient(90deg,#00c6ff,#ff00cc,#a855f7,#22c55e);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
 }
 
 /* LOGIN CARD */
 .login-card {
-    max-width: 360px;
+    max-width: 380px;
     margin: auto;
-    padding: 20px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
+    margin-top: 20px;
+    padding: 22px;
+    border-radius: 18px;
+
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(15px);
+
+    border: 1px solid rgba(255,255,255,0.15);
+
+    box-shadow: 0 0 30px rgba(168,85,247,0.25);
 }
 
-/* SMALL DEMO TEXT */
-.demo {
-    font-size:12px;
-    color:#cbd5e1;
+/* LOGIN TITLE */
+.login-title {
+    text-align:center;
+    font-size:18px;
+    font-weight:700;
     margin-bottom:10px;
+    color:#ffffff;
+}
+
+/* DEMO BOX (COLORED) */
+.demo-box {
+    margin-top:12px;
+    padding:12px;
+    border-radius:12px;
+    font-size:12px;
+
+    background: rgba(0,0,0,0.25);
+    border-left: 3px solid #a855f7;
 }
 
 /* BUTTON */
 .stButton>button {
     width:100%;
-    border-radius:8px;
-    background: #2563eb;
+    border-radius:10px;
+    background: linear-gradient(90deg,#4f46e5,#06b6d4,#a855f7);
     color:white;
-    padding:8px;
-    font-weight:600;
+    padding:10px;
+    font-weight:700;
+}
+
+/* INPUT CLEAN */
+input {
+    border-radius:8px !important;
 }
 
 </style>
@@ -162,27 +167,19 @@ body {
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">Insurance AI System</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Smart Claims • Fraud Detection • Fast Approval</div>', unsafe_allow_html=True)
+    # 🔥 PROJECT NAME (RESTORED ORIGINAL)
+    st.markdown('<div class="title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
-    st.markdown('<div style="font-weight:600;margin-bottom:5px;">Login</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-title">🔐 Login Portal</div>', unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="demo">
-    Demo Accounts:<br>
-    Hospital: hospital@gmail.com / hospital123<br>
-    Officer: officer@gmail.com / officer123<br>
-    User: user@gmail.com / user123
-    </div>
-    """, unsafe_allow_html=True)
-
+    # INPUTS
     email = st.text_input("Email")
     pw = st.text_input("Password", type="password")
-
     role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
+    # LOGIN BUTTON
     if st.button("Login"):
         conn = get_conn()
         c = conn.cursor()
@@ -199,12 +196,22 @@ if not st.session_state.login:
         else:
             st.error("Invalid credentials")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ================= DEMO OPTIONS (NOW BELOW LOGIN) =================
+    st.markdown("""
+    <div class="demo-box">
+    <b>🧪 Demo Accounts</b><br><br>
+    👨‍⚕️ Hospital: hospital@gmail.com / hospital123<br>
+    🧑‍💼 Officer: officer@gmail.com / officer123<br>
+    👤 Policyholder: user@gmail.com / user123
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ================= MAIN APP =================
 else:
 
-    st.sidebar.title("Insurance AI")
+    st.sidebar.title("Smart Insurance System")
     st.sidebar.write(st.session_state.email)
 
     if st.sidebar.button("Logout"):
@@ -214,8 +221,10 @@ else:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    menu = st.sidebar.radio("Menu",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"])
+    menu = st.sidebar.radio(
+        "Navigation",
+        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
+    )
 
     if menu == "Dashboard":
         st.title("Dashboard")
@@ -257,7 +266,7 @@ else:
             st.write(f"ID:{r['claim_id']} | Score:{r['fraud_score']} | {r['status']}")
 
     elif menu == "Track Claim":
-        st.title("Track")
+        st.title("Track Claim")
 
         cid = st.number_input("Claim ID", min_value=1)
 
