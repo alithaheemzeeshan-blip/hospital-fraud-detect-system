@@ -254,35 +254,62 @@ else:
             st.success("✅ Claim Submitted")
 
     # ================= REVIEW =================
-    elif menu == "Review Claims":
+elif menu == "Review Claims":
 
-        st.title("🕵️ Officer Panel")
+    st.title("🕵️ Officer Panel")
 
-        for _, r in df.iterrows():
+    for _, r in df.iterrows():
 
-            score = float(r["fraud_score"])
+        score = float(r["fraud_score"])
 
-            if score < 40:
-                risk = "LOW"
-                cls = "low"
-            elif score < 70:
-                risk = "MEDIUM"
-                cls = "medium"
-            else:
-                risk = "HIGH"
-                cls = "high"
+        if score < 40:
+            risk = "LOW"
+            cls = "low"
+        elif score < 70:
+            risk = "MEDIUM"
+            cls = "medium"
+        else:
+            risk = "HIGH"
+            cls = "high"
 
-            st.markdown(f"""
-            <div class="card">
-                <b>ID:</b> {r['claim_id']} |
-                <b>Patient:</b> {r['patient_name']} |
-                <b>Hospital:</b> {r['hospital_name']}<br>
-                <b>Treatment:</b> {r['treatment']}<br>
-                <b>Score:</b> {score}% <span class="{cls}">{risk}</span><br>
-                <b>Status:</b> {r['status']}<br>
-                <b>Reason:</b> {r['fraud_reason']}
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="card">
+            <b>ID:</b> {r['claim_id']} |
+            <b>Patient:</b> {r['patient_name']} |
+            <b>Hospital:</b> {r['hospital_name']}<br>
+            <b>Treatment:</b> {r['treatment']}<br>
+            <b>Score:</b> {score}% <span class="{cls}">{risk}</span><br>
+            <b>Status:</b> {r['status']}<br>
+            <b>Reason:</b> {r['fraud_reason']}
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ✅ ADD BACK ACTION BUTTONS
+        if r["status"] == "Pending":
+
+            c1, c2 = st.columns(2)
+
+            with c1:
+                if st.button(f"✅ Approve {r['claim_id']}", key=f"ap{r['claim_id']}"):
+                    cur = conn.cursor()
+                    cur.execute(
+                        "UPDATE claims SET status='Approved' WHERE claim_id=?",
+                        (r["claim_id"],)
+                    )
+                    conn.commit()
+                    st.success("Claim Approved")
+                    st.rerun()
+
+            with c2:
+                if st.button(f"❌ Reject {r['claim_id']}", key=f"re{r['claim_id']}"):
+                    cur = conn.cursor()
+                    cur.execute(
+                        "UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                        (r["claim_id"],)
+                    )
+                    conn.commit()
+                    st.error("Claim Rejected")
+                    st.rerun()
 
     # ================= TRACK =================
     elif menu == "Track Claim":
