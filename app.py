@@ -6,7 +6,7 @@ from datetime import datetime
 import os
 
 # ================= PAGE CONFIG =================
-st.set_page_config(page_title="Smart Insurance", layout="wide")
+st.set_page_config(page_title="Smart Insurance", layout="centered")
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -96,80 +96,62 @@ def init_db():
 
 init_db()
 
-# ================= CLEAN COMPACT UI =================
+# ================= CLEAN UI =================
 st.markdown("""
 <style>
 
-/* BACKGROUND */
+/* APP BACKGROUND */
 body {
-    background: linear-gradient(-45deg,#0f172a,#1e293b,#0b1220);
+    background: #0b1220;
     color: white;
 }
 
-/* TITLE (COMPACT) */
-.title{
-    text-align:center;
-    font-size:34px;
-    font-weight:800;
-    margin: 6px 0 0 0;
-    background: linear-gradient(90deg,#00c6ff,#a855f7,#ff00cc);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
+/* REMOVE STREAMLIT TOP SPACE */
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
 }
 
-/* SUBTITLE (SMALL) */
-.subtitle{
+/* TITLE (COMPACT) */
+.title {
     text-align:center;
+    font-size:30px;
+    font-weight:800;
+    margin-bottom:2px;
+    color: white;
+}
+
+/* SUBTITLE */
+.subtitle {
+    text-align:center;
+    font-size:12px;
+    color:#94a3b8;
+    margin-bottom:10px;
+}
+
+/* LOGIN CARD */
+.login-card {
+    max-width: 360px;
+    margin: auto;
+    padding: 20px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* SMALL DEMO TEXT */
+.demo {
     font-size:12px;
     color:#cbd5e1;
-    margin: 0 0 8px 0;
-}
-
-/* LOGIN CENTER (NO EXTRA SPACE) */
-.login-wrapper{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height: calc(100vh - 120px);
-}
-
-/* LOGIN CARD COMPACT */
-.login-card{
-    width: 360px;
-    padding: 18px;
-    border-radius: 18px;
-
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(14px);
-
-    border: 1px solid rgba(255,255,255,0.15);
-
-    box-shadow: 0 0 25px rgba(99,102,241,0.25);
-}
-
-/* HEADER */
-.login-header{
-    text-align:center;
-    font-size:18px;
-    font-weight:700;
-    margin-bottom:6px;
-}
-
-/* DEMO BOX */
-.demo-box{
-    background: rgba(255,255,255,0.07);
-    padding:10px;
-    border-radius:10px;
-    font-size:12px;
-    margin-bottom:8px;
+    margin-bottom:10px;
 }
 
 /* BUTTON */
-.stButton>button{
+.stButton>button {
     width:100%;
-    background: linear-gradient(90deg,#4f46e5,#06b6d4);
+    border-radius:8px;
+    background: #2563eb;
     color:white;
-    border-radius:10px;
     padding:8px;
     font-weight:600;
 }
@@ -180,51 +162,26 @@ body {
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">🏥 Insurance AI</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subtitle">Smart Claims System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">Insurance AI System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Smart Claims • Fraud Detection • Fast Approval</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
-    st.markdown('<div class="login-header">Login</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:600;margin-bottom:5px;">Login</div>', unsafe_allow_html=True)
 
-    # DEMO INFO (COMPACT)
     st.markdown("""
-    <div class="demo-box">
-    Hospital: hospital@gmail.com / 123<br>
-    Officer: officer@gmail.com / 123<br>
-    User: user@gmail.com / 123
+    <div class="demo">
+    Demo Accounts:<br>
+    Hospital: hospital@gmail.com / hospital123<br>
+    Officer: officer@gmail.com / officer123<br>
+    User: user@gmail.com / user123
     </div>
     """, unsafe_allow_html=True)
 
-    # QUICK BUTTONS (SMALL SPACE)
-    c1, c2, c3 = st.columns(3)
+    email = st.text_input("Email")
+    pw = st.text_input("Password", type="password")
 
-    if c1.button("H"):
-        st.session_state.demo_email = "hospital@gmail.com"
-        st.session_state.demo_pw = "hospital123"
-        st.session_state.demo_role = "Hospital"
-
-    if c2.button("O"):
-        st.session_state.demo_email = "officer@gmail.com"
-        st.session_state.demo_pw = "officer123"
-        st.session_state.demo_role = "Officer"
-
-    if c3.button("U"):
-        st.session_state.demo_email = "user@gmail.com"
-        st.session_state.demo_pw = "user123"
-        st.session_state.demo_role = "Policyholder"
-
-    email = st.text_input("Email", value=st.session_state.get("demo_email", ""))
-    pw = st.text_input("Password", type="password", value=st.session_state.get("demo_pw", ""))
-
-    role = st.selectbox(
-        "Role",
-        ["Hospital", "Officer", "Policyholder"],
-        index=["Hospital", "Officer", "Policyholder"].index(
-            st.session_state.get("demo_role", "Hospital")
-        )
-    )
+    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
     if st.button("Login"):
         conn = get_conn()
@@ -240,9 +197,9 @@ if not st.session_state.login:
             st.session_state.role = role
             st.rerun()
         else:
-            st.error("Invalid")
+            st.error("Invalid credentials")
 
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ================= MAIN APP =================
 else:
@@ -258,20 +215,24 @@ else:
     df = pd.read_sql("SELECT * FROM claims", conn)
 
     menu = st.sidebar.radio("Menu",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track", "Analytics"])
+        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"])
 
     if menu == "Dashboard":
         st.title("Dashboard")
-        st.metric("Total Claims", len(df))
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Claims", len(df))
+        c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
 
     elif menu == "Submit Claim":
-        st.title("Submit")
+        st.title("Submit Claim")
 
-        p = st.text_input("Policy")
-        patient = st.text_input("Patient")
-        hospital = st.text_input("Hospital")
-        treatment = st.text_input("Treatment")
-        amount = st.number_input("Amount", min_value=0.0)
+        p = st.text_input("Policy Number")
+        patient = st.text_input("Patient Name")
+        hospital = st.text_input("Hospital Name")
+        treatment = st.text_input("Treatment Type")
+        amount = st.number_input("Claim Amount", min_value=0.0)
 
         if st.button("Submit"):
             score, reason = ai_fraud_model(amount, 50000, hospital)
@@ -279,32 +240,37 @@ else:
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (p, patient, hospital, treatment, amount,
-                  score, reason, "Pending",
-                  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                  None, None, st.session_state.email))
+            """, (
+                p, patient, hospital, treatment, amount,
+                score, reason, "Pending",
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                None, None, st.session_state.email
+            ))
 
             conn.commit()
-            st.success("Submitted")
+            st.success("Claim Submitted")
 
     elif menu == "Review Claims":
-        st.title("Review")
+        st.title("Officer Panel")
 
         for _, r in df.iterrows():
-            st.write(r["claim_id"], r["fraud_score"], r["status"])
+            st.write(f"ID:{r['claim_id']} | Score:{r['fraud_score']} | {r['status']}")
 
-    elif menu == "Track":
+    elif menu == "Track Claim":
         st.title("Track")
-        cid = st.number_input("ID", min_value=1)
-        if st.button("Search"):
-            r = conn.cursor().execute(
-                "SELECT * FROM claims WHERE claim_id=?", (cid,)
-            ).fetchone()
 
-            st.write(r if r else "Not found")
+        cid = st.number_input("Claim ID", min_value=1)
+
+        if st.button("Search"):
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM claims WHERE claim_id=?", (cid,))
+            r = cur.fetchone()
+
+            st.write(r if r else "Not Found")
 
     elif menu == "Analytics":
         st.title("Analytics")
+
         if not df.empty:
             st.bar_chart(df["fraud_score"])
             st.line_chart(df["claim_amount"])
