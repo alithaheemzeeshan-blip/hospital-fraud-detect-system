@@ -31,7 +31,7 @@ def safe(r, *keys):
             return r[k]
     return "N/A"
 
-# ================= AI FRAUD =================
+# ================= AI =================
 def ai_fraud_model(amount, limit, hospital):
     score = 0
     reasons = []
@@ -49,27 +49,6 @@ def ai_fraud_model(amount, limit, hospital):
         reasons.append("Unverified hospital")
 
     return min(score, 100), ", ".join(reasons) if reasons else "Normal case"
-
-# ================= AI DECISION =================
-def ai_decision(score):
-    if score >= 75:
-        return "Rejected", "High fraud risk"
-    elif score >= 40:
-        return "Review", "Medium risk"
-    else:
-        return "Approved", "Low risk"
-
-# ================= EMAIL SIM =================
-def send_email(to, subject, msg):
-    st.info(f"""
-📧 EMAIL (SIMULATION)
-
-To: {to}
-Subject: {subject}
-
-Message:
-{msg}
-""")
 
 # ================= INIT DB =================
 def init_db():
@@ -104,11 +83,6 @@ def init_db():
 
     conn.commit()
 
-    try:
-        c.execute("ALTER TABLE claims ADD COLUMN submitted_by TEXT")
-    except:
-        pass
-
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -123,43 +97,34 @@ def init_db():
 
 init_db()
 
-# ================= ORIGINAL UI =================
+# ================= UI =================
 st.markdown("""
 <style>
-
-body {
-    background:#0b1220;
-    color:white;
+body {background:#0b1220;color:white;}
+.title{
+text-align:center;
+font-size:42px;
+font-weight:900;
+background:linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
+-webkit-background-clip:text;
+-webkit-text-fill-color:transparent;
 }
-
-.title {
-    text-align:center;
-    font-size:42px;
-    font-weight:900;
-    background: linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
+.card{
+background:rgba(255,255,255,0.04);
+padding:15px;
+border-radius:15px;
+margin-bottom:10px;
+border:1px solid rgba(255,255,255,0.08);
 }
-
-.card {
-    background: rgba(255,255,255,0.04);
-    padding:15px;
-    border-radius:15px;
-    margin-bottom:10px;
-    border:1px solid rgba(255,255,255,0.08);
-}
-
 .high{color:#ff4d4d;font-weight:800;}
 .medium{color:#fbbf24;font-weight:800;}
 .low{color:#22c55e;font-weight:800;}
-
-.stButton>button {
-    background: linear-gradient(90deg,#4f46e5,#06b6d4);
-    color:white;
-    border-radius:10px;
-    padding:8px 14px;
+.stButton>button{
+background:linear-gradient(90deg,#4f46e5,#06b6d4);
+color:white;
+border-radius:10px;
+padding:8px 14px;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -188,10 +153,10 @@ if not st.session_state.login:
 
     st.markdown("""
     <div class="card">
-    Demo:
-    hospital@gmail.com / hospital123  
-    officer@gmail.com / officer123  
-    user@gmail.com / user123
+    Demo Login:<br>
+    Hospital: hospital@gmail.com / hospital123<br>
+    Officer: officer@gmail.com / officer123<br>
+    Policyholder: user@gmail.com / user123
     </div>
     """, unsafe_allow_html=True)
 
@@ -209,7 +174,17 @@ else:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    menu = st.sidebar.radio("Menu", ["Dashboard", "Submit Claim", "Review Claims", "Analytics"])
+    # ================= ROLE MENU =================
+    if st.session_state.role == "Officer":
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Review Claims", "Analytics"]
+        )
+    else:
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "Analytics"]
+        )
 
     # ================= DASHBOARD =================
     if menu == "Dashboard":
@@ -239,92 +214,91 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ================= SUBMIT CLAIM =================
+    # ================= SUBMIT CLAIM (ONLY NON-OFFICER) =================
     elif menu == "Submit Claim":
 
-        st.title("Submit Claim")
+        if st.session_state.role == "Officer":
+            st.warning("Access Denied")
+        else:
 
-        p = st.text_input("Policy Number")
-        patient = st.text_input("Patient Name")
-        hospital = st.text_input("Hospital Name")
+            st.title("Submit Claim")
 
-        treatment = st.selectbox("Treatment Type", [
-            "General Checkup","Emergency Care","Surgery","Cardiology",
-            "Orthopedic","Neurology","Dental","Maternity","Radiology","ICU"
-        ])
+            p = st.text_input("Policy Number")
+            patient = st.text_input("Patient Name")
+            hospital = st.text_input("Hospital Name")
 
-        amount = st.number_input("Claim Amount", min_value=0.0)
+            treatment = st.selectbox("Treatment Type", [
+                "General Checkup","Emergency Care","Surgery","Cardiology",
+                "Orthopedic","Neurology","Dental","Maternity","Radiology","ICU"
+            ])
 
-        uploaded_file = st.file_uploader("Upload Medical Image", type=["jpg","jpeg","png"])
+            amount = st.number_input("Claim Amount", min_value=0.0)
 
-        file_path = None
-        file_type = None
+            if st.button("Submit"):
 
-        if uploaded_file:
-            file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            file_type = "image"
+                score, reason = ai_fraud_model(amount, 50000, hospital)
 
-        if st.button("Submit"):
+                cur = conn.cursor()
+                cur.execute("""
+                INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    p, patient, hospital, treatment, amount,
+                    score, reason,
+                    "Pending",
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    None, None,
+                    st.session_state.email
+                ))
 
-            score, reason = ai_fraud_model(amount, 50000, hospital)
+                conn.commit()
+                st.success("Claim Submitted")
 
-            cur = conn.cursor()
-            cur.execute("""
-            INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
-            """, (
-                p, patient, hospital, treatment, amount,
-                score, reason,
-                "Pending",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                file_path,
-                file_type,
-                st.session_state.email
-            ))
-
-            conn.commit()
-            st.success("Claim Submitted")
-
-    # ================= REVIEW CLAIMS =================
+    # ================= REVIEW CLAIMS (OFFICER ONLY) =================
     elif menu == "Review Claims":
 
-        st.title("Officer Review Panel")
+        if st.session_state.role != "Officer":
+            st.warning("Access Denied")
 
-        for _, r in df.iterrows():
+        else:
 
-            st.markdown(f"""
-            <div class="card">
-                <b>ID:</b> {safe(r,'claim_id')} |
-                <span class="medium">{safe(r,'fraud_score')}%</span><br>
-                🏥 {safe(r,'hospital_name')} | 👤 {safe(r,'patient_name')}<br>
-                💊 {safe(r,'treatment')}<br>
-                📌 {safe(r,'status')}
-            </div>
-            """, unsafe_allow_html=True)
+            st.title("Officer Review Panel")
 
-            if r["status"] == "Pending":
+            for _, r in df.iterrows():
 
-                col1, col2, col3 = st.columns(3)
+                st.markdown(f"""
+                <div class="card">
+                    <b>ID:</b> {safe(r,'claim_id')} |
+                    <span class="medium">{safe(r,'fraud_score')}%</span><br>
+                    🏥 {safe(r,'hospital_name')} | 👤 {safe(r,'patient_name')}<br>
+                    💊 {safe(r,'treatment')}<br>
+                    📌 {safe(r,'status')}
+                </div>
+                """, unsafe_allow_html=True)
 
-                with col1:
-                    if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
-                        cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",(r['claim_id'],))
-                        conn.commit()
-                        st.rerun()
+                if r["status"] == "Pending":
 
-                with col2:
-                    if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
-                        cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",(r['claim_id'],))
-                        conn.commit()
-                        st.rerun()
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
+                            cur = conn.cursor()
+                            cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
+                                        (r['claim_id'],))
+                            conn.commit()
+                            st.rerun()
+
+                    with col2:
+                        if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
+                            cur = conn.cursor()
+                            cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                                        (r['claim_id'],))
+                            conn.commit()
+                            st.rerun()
 
     # ================= ANALYTICS =================
     elif menu == "Analytics":
 
-        st.title("Analytics")
+        st.title("Analytics Dashboard")
 
         if "fraud_score" in df.columns:
             st.bar_chart(df["fraud_score"])
