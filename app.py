@@ -24,6 +24,13 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
+# ================= SAFE ACCESS =================
+def safe_get(row, key, default="N/A"):
+    try:
+        return row[key]
+    except:
+        return default
+
 # ================= AI MODEL =================
 def ai_fraud_model(amount, limit, hospital):
     score = 0
@@ -43,11 +50,12 @@ def ai_fraud_model(amount, limit, hospital):
 
     return min(score, 100), ", ".join(reasons) if reasons else "Normal"
 
-# ================= INIT DB =================
+# ================= INIT DB (SAFE AUTO FIX) =================
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
+    # USERS TABLE
     c.execute("""
     CREATE TABLE IF NOT EXISTS users(
         email TEXT,
@@ -56,8 +64,12 @@ def init_db():
     )
     """)
 
+    # DROP OLD CLAIMS TO AVOID KEYERROR ISSUES
+    c.execute("DROP TABLE IF EXISTS claims")
+
+    # CREATE CLEAN TABLE
     c.execute("""
-    CREATE TABLE IF NOT EXISTS claims(
+    CREATE TABLE claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
         patient_name TEXT,
@@ -76,6 +88,7 @@ def init_db():
 
     conn.commit()
 
+    # DEFAULT USERS
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -90,7 +103,7 @@ def init_db():
 
 init_db()
 
-# ================= UI =================
+# ================= UI STYLE =================
 st.markdown("""
 <style>
 body {
@@ -98,36 +111,35 @@ body {
     color: white;
 }
 
-.login-card {
-    max-width: 380px;
-    margin: auto;
-    margin-top: 20px;
-    padding: 20px;
-    border-radius: 16px;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-}
-
 .title {
     text-align:center;
     font-size:32px;
     font-weight:800;
-    color:white;
     margin-bottom:10px;
+    color:white;
 }
 
-.stButton>button {
-    width:100%;
-    border-radius:8px;
-    background: #2563eb;
-    color:white;
-    padding:8px;
+.login-card {
+    max-width:380px;
+    margin:auto;
+    padding:20px;
+    border-radius:14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
 }
 
 .demo {
     font-size:12px;
     color:#cbd5e1;
     margin-top:10px;
+}
+
+.stButton>button {
+    width:100%;
+    border-radius:8px;
+    background:#2563eb;
+    color:white;
+    padding:8px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -138,8 +150,6 @@ if not st.session_state.login:
     st.markdown('<div class="title">Smart Health Insurance System</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
-
-    st.write("Login")
 
     email = st.text_input("Email")
     pw = st.text_input("Password", type="password")
@@ -185,7 +195,7 @@ else:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    # ================= FIXED MENU (OFFICER HAS NO SUBMIT CLAIM) =================
+    # ================= MENU (OFFICER FIXED) =================
     if st.session_state.role == "Officer":
         menu = st.sidebar.radio(
             "Navigation",
@@ -201,12 +211,10 @@ else:
     if menu == "Dashboard":
         st.title("Dashboard")
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Claims", len(df))
-        c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
-        c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
+        st.metric("Total Claims", len(df))
+        st.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
 
-    # ================= SUBMIT CLAIM (ONLY NON-OFFICER) =================
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
         st.title("Submit Claim")
@@ -214,7 +222,7 @@ else:
         p = st.text_input("Policy Number")
         patient = st.text_input("Patient Name")
         hospital = st.text_input("Hospital Name")
-        treatment = st.text_input("Treatment Type")  # ✅ KEPT SAME
+        treatment = st.text_input("Treatment Type")  # SAFE
         amount = st.number_input("Claim Amount", min_value=0.0)
 
         if st.button("Submit"):
@@ -233,23 +241,23 @@ else:
             conn.commit()
             st.success("Claim Submitted")
 
-    # ================= REVIEW CLAIMS (OFFICER WITH ACCEPT/REJECT) =================
+    # ================= OFFICER PANEL =================
     elif menu == "Review Claims":
 
         st.title("Officer Panel")
 
         for _, r in df.iterrows():
 
-            st.write(f"""
-            ID: {r['claim_id']} |
-            Patient: {r['patient_name']} |
-            Hospital: {r['hospital_name']} |
-            Treatment: {r['treatment']} |
-            Score: {r['fraud_score']} |
-            Status: {r['status']}
-            """)
+            st.write(
+                f"ID:{safe_get(r,'claim_id')} | "
+                f"Patient:{safe_get(r,'patient_name')} | "
+                f"Hospital:{safe_get(r,'hospital_name')} | "
+                f"Treatment:{safe_get(r,'treatment')} | "
+                f"Score:{safe_get(r,'fraud_score')} | "
+                f"Status:{safe_get(r,'status')}"
+            )
 
-            if r["status"] == "Pending":
+            if safe_get(r, "status") == "Pending":
 
                 c1, c2 = st.columns(2)
 
@@ -273,7 +281,7 @@ else:
                         conn.commit()
                         st.rerun()
 
-    # ================= TRACK =================
+    # ================= TRACK CLAIM =================
     elif menu == "Track Claim":
 
         st.title("Track Claim")
