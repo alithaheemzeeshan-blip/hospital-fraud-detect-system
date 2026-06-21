@@ -285,7 +285,6 @@ else:
                     limit, status = 50000, "Active"
 
                    score, reason = ai_fraud_model(status, a, limit, h)
-
                     # AI only gives recommendation
                     final_status = "Pending"
 
