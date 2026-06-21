@@ -90,96 +90,61 @@ def init_db():
 
 init_db()
 
-# ================= IMPROVED COLORFUL UI =================
+# ================= UI =================
 st.markdown("""
 <style>
-
 body {
-    background: linear-gradient(135deg,#0f172a,#1e293b,#0b1220);
+    background: #0b1220;
     color: white;
 }
 
-/* APP TITLE (ORIGINAL NAME RESTORED) */
-.title {
-    text-align:center;
-    font-size:34px;
-    font-weight:900;
-    margin-top:10px;
-    background: linear-gradient(90deg,#00c6ff,#ff00cc,#a855f7,#22c55e);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
-}
-
-/* LOGIN CARD */
 .login-card {
     max-width: 380px;
     margin: auto;
     margin-top: 20px;
-    padding: 22px;
-    border-radius: 18px;
-
-    background: rgba(255,255,255,0.07);
-    backdrop-filter: blur(15px);
-
-    border: 1px solid rgba(255,255,255,0.15);
-
-    box-shadow: 0 0 30px rgba(168,85,247,0.25);
+    padding: 20px;
+    border-radius: 16px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
 }
 
-/* LOGIN TITLE */
-.login-title {
+.title {
     text-align:center;
-    font-size:18px;
-    font-weight:700;
+    font-size:32px;
+    font-weight:800;
+    color:white;
     margin-bottom:10px;
-    color:#ffffff;
 }
 
-/* DEMO BOX (COLORED) */
-.demo-box {
-    margin-top:12px;
-    padding:12px;
-    border-radius:12px;
-    font-size:12px;
-
-    background: rgba(0,0,0,0.25);
-    border-left: 3px solid #a855f7;
-}
-
-/* BUTTON */
 .stButton>button {
     width:100%;
-    border-radius:10px;
-    background: linear-gradient(90deg,#4f46e5,#06b6d4,#a855f7);
+    border-radius:8px;
+    background: #2563eb;
     color:white;
-    padding:10px;
-    font-weight:700;
+    padding:8px;
 }
 
-/* INPUT CLEAN */
-input {
-    border-radius:8px !important;
+.demo {
+    font-size:12px;
+    color:#cbd5e1;
+    margin-top:10px;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    # 🔥 PROJECT NAME (RESTORED ORIGINAL)
-    st.markdown('<div class="title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">Smart Health Insurance System</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
-    st.markdown('<div class="login-title">🔐 Login Portal</div>', unsafe_allow_html=True)
+    st.write("Login")
 
-    # INPUTS
     email = st.text_input("Email")
     pw = st.text_input("Password", type="password")
     role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
-    # LOGIN BUTTON
     if st.button("Login"):
         conn = get_conn()
         c = conn.cursor()
@@ -196,13 +161,12 @@ if not st.session_state.login:
         else:
             st.error("Invalid credentials")
 
-    # ================= DEMO OPTIONS (NOW BELOW LOGIN) =================
     st.markdown("""
-    <div class="demo-box">
-    <b>🧪 Demo Accounts</b><br><br>
-    👨‍⚕️ Hospital: hospital@gmail.com / hospital123<br>
-    🧑‍💼 Officer: officer@gmail.com / officer123<br>
-    👤 Policyholder: user@gmail.com / user123
+    <div class="demo">
+    Demo Accounts:<br>
+    Hospital: hospital@gmail.com / hospital123<br>
+    Officer: officer@gmail.com / officer123<br>
+    User: user@gmail.com / user123
     </div>
     """, unsafe_allow_html=True)
 
@@ -221,11 +185,19 @@ else:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    menu = st.sidebar.radio(
-        "Navigation",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
-    )
+    # ================= FIXED MENU (OFFICER HAS NO SUBMIT CLAIM) =================
+    if st.session_state.role == "Officer":
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Review Claims", "Track Claim", "Analytics"]
+        )
+    else:
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "Track Claim", "Analytics"]
+        )
 
+    # ================= DASHBOARD =================
     if menu == "Dashboard":
         st.title("Dashboard")
 
@@ -234,13 +206,15 @@ else:
         c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
         c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
 
+    # ================= SUBMIT CLAIM (ONLY NON-OFFICER) =================
     elif menu == "Submit Claim":
+
         st.title("Submit Claim")
 
         p = st.text_input("Policy Number")
         patient = st.text_input("Patient Name")
         hospital = st.text_input("Hospital Name")
-        treatment = st.text_input("Treatment Type")
+        treatment = st.text_input("Treatment Type")  # ✅ KEPT SAME
         amount = st.number_input("Claim Amount", min_value=0.0)
 
         if st.button("Submit"):
@@ -259,13 +233,49 @@ else:
             conn.commit()
             st.success("Claim Submitted")
 
+    # ================= REVIEW CLAIMS (OFFICER WITH ACCEPT/REJECT) =================
     elif menu == "Review Claims":
+
         st.title("Officer Panel")
 
         for _, r in df.iterrows():
-            st.write(f"ID:{r['claim_id']} | Score:{r['fraud_score']} | {r['status']}")
 
+            st.write(f"""
+            ID: {r['claim_id']} |
+            Patient: {r['patient_name']} |
+            Hospital: {r['hospital_name']} |
+            Treatment: {r['treatment']} |
+            Score: {r['fraud_score']} |
+            Status: {r['status']}
+            """)
+
+            if r["status"] == "Pending":
+
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    if st.button(f"✅ Accept {r['claim_id']}", key=f"a{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute(
+                            "UPDATE claims SET status='Approved' WHERE claim_id=?",
+                            (r["claim_id"],)
+                        )
+                        conn.commit()
+                        st.rerun()
+
+                with c2:
+                    if st.button(f"❌ Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute(
+                            "UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                            (r["claim_id"],)
+                        )
+                        conn.commit()
+                        st.rerun()
+
+    # ================= TRACK =================
     elif menu == "Track Claim":
+
         st.title("Track Claim")
 
         cid = st.number_input("Claim ID", min_value=1)
@@ -277,7 +287,9 @@ else:
 
             st.write(r if r else "Not Found")
 
+    # ================= ANALYTICS =================
     elif menu == "Analytics":
+
         st.title("Analytics")
 
         if not df.empty:
