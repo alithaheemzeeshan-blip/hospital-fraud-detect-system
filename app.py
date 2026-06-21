@@ -25,9 +25,9 @@ def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
 # ================= SAFE ACCESS =================
-def safe_get(row, key, default="N/A"):
+def safe(r, key, default="N/A"):
     try:
-        return row[key]
+        return r[key]
     except:
         return default
 
@@ -48,14 +48,13 @@ def ai_fraud_model(amount, limit, hospital):
         score += 15
         reasons.append("Unverified hospital")
 
-    return min(score, 100), ", ".join(reasons) if reasons else "Normal"
+    return min(score, 100), ", ".join(reasons) if reasons else "Normal case"
 
-# ================= INIT DB (SAFE AUTO FIX) =================
+# ================= INIT DB (SAFE FIX) =================
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    # USERS TABLE
     c.execute("""
     CREATE TABLE IF NOT EXISTS users(
         email TEXT,
@@ -64,12 +63,9 @@ def init_db():
     )
     """)
 
-    # DROP OLD CLAIMS TO AVOID KEYERROR ISSUES
-    c.execute("DROP TABLE IF EXISTS claims")
-
-    # CREATE CLEAN TABLE
+    # DO NOT DROP EVERYTHING (prevents data loss)
     c.execute("""
-    CREATE TABLE claims(
+    CREATE TABLE IF NOT EXISTS claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
         policy_number TEXT,
         patient_name TEXT,
@@ -88,7 +84,6 @@ def init_db():
 
     conn.commit()
 
-    # DEFAULT USERS
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -103,7 +98,7 @@ def init_db():
 
 init_db()
 
-# ================= UI STYLE =================
+# ================= UI =================
 st.markdown("""
 <style>
 body {
@@ -195,7 +190,7 @@ else:
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
 
-    # ================= MENU (OFFICER FIXED) =================
+    # ================= MENU (ONLY FIX: OFFICER HIDE SUBMIT CLAIM) =================
     if st.session_state.role == "Officer":
         menu = st.sidebar.radio(
             "Navigation",
@@ -211,8 +206,10 @@ else:
     if menu == "Dashboard":
         st.title("Dashboard")
 
-        st.metric("Total Claims", len(df))
-        st.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Claims", len(df))
+        c2.metric("High Risk", len(df[df["fraud_score"] > 70]) if not df.empty else 0)
+        c3.metric("Safe", len(df[df["fraud_score"] <= 40]) if not df.empty else 0)
 
     # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
@@ -222,7 +219,7 @@ else:
         p = st.text_input("Policy Number")
         patient = st.text_input("Patient Name")
         hospital = st.text_input("Hospital Name")
-        treatment = st.text_input("Treatment Type")  # SAFE
+        treatment = st.text_input("Treatment Type")  # FIXED SAFE
         amount = st.number_input("Claim Amount", min_value=0.0)
 
         if st.button("Submit"):
@@ -241,7 +238,7 @@ else:
             conn.commit()
             st.success("Claim Submitted")
 
-    # ================= OFFICER PANEL =================
+    # ================= OFFICER PANEL (FIXED ONLY ADD BUTTONS) =================
     elif menu == "Review Claims":
 
         st.title("Officer Panel")
@@ -249,15 +246,15 @@ else:
         for _, r in df.iterrows():
 
             st.write(
-                f"ID:{safe_get(r,'claim_id')} | "
-                f"Patient:{safe_get(r,'patient_name')} | "
-                f"Hospital:{safe_get(r,'hospital_name')} | "
-                f"Treatment:{safe_get(r,'treatment')} | "
-                f"Score:{safe_get(r,'fraud_score')} | "
-                f"Status:{safe_get(r,'status')}"
+                f"ID:{safe(r,'claim_id')} | "
+                f"Patient:{safe(r,'patient_name')} | "
+                f"Hospital:{safe(r,'hospital_name')} | "
+                f"Treatment:{safe(r,'treatment')} | "
+                f"Score:{safe(r,'fraud_score')} | "
+                f"Status:{safe(r,'status')}"
             )
 
-            if safe_get(r, "status") == "Pending":
+            if safe(r, "status") == "Pending":
 
                 c1, c2 = st.columns(2)
 
