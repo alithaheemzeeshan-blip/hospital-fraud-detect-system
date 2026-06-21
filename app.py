@@ -24,7 +24,7 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ================= SAFE ACCESS (IMPORTANT FIX) =================
+# ================= SAFE GET =================
 def safe(r, *keys):
     for k in keys:
         if k in r:
@@ -123,7 +123,7 @@ def init_db():
 
 init_db()
 
-# ================= ORIGINAL UI (UNCHANGED) =================
+# ================= ORIGINAL UI =================
 st.markdown("""
 <style>
 
@@ -168,37 +168,32 @@ if not st.session_state.login:
 
     st.markdown('<div class="title">🏥 Smart Health Insurance System</div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1,2,1])
+    email = st.text_input("Email")
+    pw = st.text_input("Password", type="password")
+    role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
 
-    with col2:
-        st.subheader("🔐 Login Panel")
+    if st.button("Login"):
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
+                  (email, hash_password(pw), role))
 
-        email = st.text_input("Email")
-        pw = st.text_input("Password", type="password")
-        role = st.selectbox("Role", ["Hospital", "Officer", "Policyholder"])
+        if c.fetchone():
+            st.session_state.login = True
+            st.session_state.email = email
+            st.session_state.role = role
+            st.rerun()
+        else:
+            st.error("Invalid login")
 
-        if st.button("Login"):
-            conn = get_conn()
-            c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE email=? AND password=? AND role=?",
-                      (email, hash_password(pw), role))
-
-            if c.fetchone():
-                st.session_state.login = True
-                st.session_state.email = email
-                st.session_state.role = role
-                st.rerun()
-            else:
-                st.error("Invalid login")
-
-        st.markdown("""
-        <div class="card">
-        <b>Demo Credentials</b><br><br>
-        Hospital: hospital@gmail.com / hospital123<br>
-        Officer: officer@gmail.com / officer123<br>
-        Policyholder: user@gmail.com / user123
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <div class="card">
+    Demo:
+    hospital@gmail.com / hospital123  
+    officer@gmail.com / officer123  
+    user@gmail.com / user123
+    </div>
+    """, unsafe_allow_html=True)
 
 # ================= MAIN APP =================
 else:
@@ -209,28 +204,12 @@ else:
 
     if st.sidebar.button("🚪 Logout"):
         st.session_state.login = False
-        st.session_state.email = ""
-        st.session_state.role = ""
         st.rerun()
-
-    if st.session_state.role == "Policyholder":
-        menu = st.sidebar.radio(
-            "Navigation",
-            ["Dashboard", "Submit Claim", "My Claims", "Track Claim", "Analytics"]
-        )
-    elif st.session_state.role == "Hospital":
-        menu = st.sidebar.radio(
-            "Navigation",
-            ["Dashboard", "Submit Claim", "Review Claims", "Analytics"]
-        )
-    else:
-        menu = st.sidebar.radio(
-            "Navigation",
-            ["Dashboard", "Review Claims", "Officer Analytics", "Track Claim", "Analytics"]
-        )
 
     conn = get_conn()
     df = pd.read_sql("SELECT * FROM claims", conn)
+
+    menu = st.sidebar.radio("Menu", ["Dashboard", "Submit Claim", "Review Claims", "Analytics"])
 
     # ================= DASHBOARD =================
     if menu == "Dashboard":
@@ -249,18 +228,18 @@ else:
 
                 st.markdown(f"""
                 <div class="card">
-                    <b>Claim ID:</b> {safe(r,'claim_id')} |
+                    <b>ID:</b> {safe(r,'claim_id')} |
                     <span class="{level}">{safe(r,'fraud_score')}%</span><br><br>
 
-                    🏥 Hospital: {safe(r,'hospital_name','hospital')}<br>
-                    👤 Patient: {safe(r,'patient_name','patient')}<br>
-                    💊 Treatment: {safe(r,'treatment')}<br>
-                    💰 Amount: {safe(r,'claim_amount','amount')}<br>
-                    📌 Status: {safe(r,'status')}
+                    🏥 {safe(r,'hospital_name')}<br>
+                    👤 {safe(r,'patient_name')}<br>
+                    💊 {safe(r,'treatment')}<br>
+                    💰 {safe(r,'claim_amount')}<br>
+                    📌 {safe(r,'status')}
                 </div>
                 """, unsafe_allow_html=True)
 
-    # ================= SUBMIT =================
+    # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
         st.title("Submit Claim")
@@ -268,8 +247,24 @@ else:
         p = st.text_input("Policy Number")
         patient = st.text_input("Patient Name")
         hospital = st.text_input("Hospital Name")
-        treatment = st.text_input("Treatment Type")
+
+        treatment = st.selectbox("Treatment Type", [
+            "General Checkup","Emergency Care","Surgery","Cardiology",
+            "Orthopedic","Neurology","Dental","Maternity","Radiology","ICU"
+        ])
+
         amount = st.number_input("Claim Amount", min_value=0.0)
+
+        uploaded_file = st.file_uploader("Upload Medical Image", type=["jpg","jpeg","png"])
+
+        file_path = None
+        file_type = None
+
+        if uploaded_file:
+            file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            file_type = "image"
 
         if st.button("Submit"):
 
@@ -283,14 +278,15 @@ else:
                 score, reason,
                 "Pending",
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                None, None,
+                file_path,
+                file_type,
                 st.session_state.email
             ))
 
             conn.commit()
             st.success("Claim Submitted")
 
-    # ================= REVIEW =================
+    # ================= REVIEW CLAIMS =================
     elif menu == "Review Claims":
 
         st.title("Officer Review Panel")
@@ -299,17 +295,36 @@ else:
 
             st.markdown(f"""
             <div class="card">
-                <b>Claim ID:</b> {safe(r,'claim_id')} |
+                <b>ID:</b> {safe(r,'claim_id')} |
                 <span class="medium">{safe(r,'fraud_score')}%</span><br>
-                🏥 {safe(r,'hospital_name','hospital')} | 👤 {safe(r,'patient_name','patient')}<br>
+                🏥 {safe(r,'hospital_name')} | 👤 {safe(r,'patient_name')}<br>
+                💊 {safe(r,'treatment')}<br>
                 📌 {safe(r,'status')}
             </div>
             """, unsafe_allow_html=True)
 
+            if r["status"] == "Pending":
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+                    if st.button(f"Approve {r['claim_id']}", key=f"a{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",(r['claim_id'],))
+                        conn.commit()
+                        st.rerun()
+
+                with col2:
+                    if st.button(f"Reject {r['claim_id']}", key=f"r{r['claim_id']}"):
+                        cur = conn.cursor()
+                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",(r['claim_id'],))
+                        conn.commit()
+                        st.rerun()
+
     # ================= ANALYTICS =================
     elif menu == "Analytics":
 
-        st.title("Analytics Dashboard")
+        st.title("Analytics")
 
         if "fraud_score" in df.columns:
             st.bar_chart(df["fraud_score"])
