@@ -136,7 +136,7 @@ body {
 </style>
 """, unsafe_allow_html=True)
 
-# ================= LOGIN =================
+# ================= LOGIN PAGE =================
 if not st.session_state.login:
 
     st.markdown('<div class="title">🏥 Smart Health Insurance System 💙</div>', unsafe_allow_html=True)
@@ -159,6 +159,24 @@ if not st.session_state.login:
         else:
             st.error("❌ Invalid credentials")
 
+    # ================= DEMO LOGINS =================
+    st.markdown("---")
+    st.markdown("""
+### 🔑 Demo Logins
+
+🏥 **Hospital**  
+Email: hospital@gmail.com  
+Password: hospital123  
+
+🕵️ **Officer**  
+Email: officer@gmail.com  
+Password: officer123  
+
+👨‍⚕️ **Policyholder**  
+Email: user@gmail.com  
+Password: user123  
+""")
+
 # ================= MAIN APP =================
 else:
 
@@ -168,16 +186,18 @@ else:
     if not df.empty:
         df["fraud_score"] = pd.to_numeric(df["fraud_score"], errors="coerce").fillna(0)
 
-    st.sidebar.title("🏥 Insurance System")
-    st.sidebar.write(st.session_state.email)
+    st.sidebar.title("🏥 System Panel")
+    st.sidebar.write(f"👤 {st.session_state.email} ({st.session_state.role})")
 
     if st.sidebar.button("🚪 Logout"):
         st.session_state.login = False
         st.rerun()
 
-    menu = st.sidebar.radio("Menu",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
-    )
+    # ================= ROLE BASED MENU =================
+    if st.session_state.role == "Officer":
+        menu = st.sidebar.radio("Menu", ["Dashboard", "Review Claims", "Track Claim", "Analytics"])
+    else:
+        menu = st.sidebar.radio("Menu", ["Dashboard", "Submit Claim", "Track Claim", "Analytics"])
 
     # ================= DASHBOARD =================
     if menu == "Dashboard":
@@ -197,7 +217,7 @@ else:
         c4.markdown(f"<div class='stat'>⏳<br><b>{pending}</b><br>Pending</div>", unsafe_allow_html=True)
         c5.markdown(f"<div class='stat'>⚠️<br><b>{high_risk}</b><br>High Risk</div>", unsafe_allow_html=True)
 
-    # ================= SUBMIT CLAIM =================
+    # ================= SUBMIT CLAIM (ONLY HOSPITAL/POLICYHOLDER) =================
     elif menu == "Submit Claim":
 
         st.title("📝 Submit Claim")
@@ -241,7 +261,7 @@ else:
             conn.commit()
             st.success("✅ Claim Submitted")
 
-    # ================= REVIEW CLAIMS =================
+    # ================= OFFICER PANEL (ONLY APPROVE/REJECT) =================
     elif menu == "Review Claims":
 
         st.title("🕵️ Officer Panel")
@@ -270,6 +290,7 @@ else:
             """, unsafe_allow_html=True)
 
             if r["status"] == "Pending":
+
                 c1, c2 = st.columns(2)
 
                 with c1:
