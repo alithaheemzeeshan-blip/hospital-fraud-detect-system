@@ -96,24 +96,40 @@ def init_db():
 
 init_db()
 
-# ================= MODERN CSS =================
+# ================= IMPRESSIVE CSS =================
 st.markdown("""
 <style>
 
+/* Animated background */
 body {
-    background: linear-gradient(135deg,#0f172a,#1e293b,#0b1220);
+    background: linear-gradient(-45deg,#0f172a,#1e293b,#0b1220,#111827);
+    background-size: 400% 400%;
+    animation: gradientBG 10s ease infinite;
     color: white;
+}
+
+@keyframes gradientBG {
+    0% {background-position:0% 50%;}
+    50% {background-position:100% 50%;}
+    100% {background-position:0% 50%;}
 }
 
 /* TITLE */
 .title{
     text-align:center;
-    font-size:40px;
+    font-size:44px;
     font-weight:900;
-    background:linear-gradient(90deg,#00c6ff,#7a00ff,#ff00cc);
+    margin-top:20px;
+    background:linear-gradient(90deg,#00c6ff,#a855f7,#ff00cc,#22c55e);
     -webkit-background-clip:text;
     -webkit-text-fill-color:transparent;
-    margin-top:20px;
+}
+
+.subtitle{
+    text-align:center;
+    font-size:14px;
+    color:#cbd5e1;
+    margin-bottom:10px;
 }
 
 /* LOGIN WRAPPER */
@@ -121,18 +137,29 @@ body {
     display:flex;
     justify-content:center;
     align-items:center;
-    height:85vh;
+    height:80vh;
 }
 
 /* LOGIN CARD */
 .login-card{
-    width: 380px;
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(14px);
-    border-radius: 22px;
-    padding: 25px;
+    width: 400px;
+    padding: 30px;
+    border-radius: 24px;
+
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(18px);
+
     border: 1px solid rgba(255,255,255,0.15);
-    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+
+    box-shadow:
+        0 0 40px rgba(99,102,241,0.25),
+        0 0 80px rgba(236,72,153,0.15);
+
+    transition: 0.3s ease;
+}
+
+.login-card:hover{
+    transform: translateY(-6px);
 }
 
 /* HEADER */
@@ -147,25 +174,26 @@ body {
 .demo-box{
     background: rgba(255,255,255,0.08);
     padding:12px;
-    border-radius:12px;
+    border-radius:14px;
     font-size:13px;
     margin-bottom:12px;
+    border-left: 3px solid #7c3aed;
 }
 
 /* BUTTON */
 .stButton>button{
     width:100%;
-    background: linear-gradient(90deg,#4f46e5,#06b6d4);
+    background: linear-gradient(90deg,#4f46e5,#06b6d4,#a855f7);
     color:white;
-    border-radius:12px;
-    padding:10px;
-    font-weight:bold;
+    border-radius:14px;
+    padding:12px;
+    font-weight:700;
     border:none;
 }
 
 .stButton>button:hover{
-    transform: scale(1.02);
-    transition: 0.2s;
+    transform: scale(1.03);
+    box-shadow: 0 0 15px rgba(99,102,241,0.5);
 }
 
 </style>
@@ -174,37 +202,38 @@ body {
 # ================= LOGIN =================
 if not st.session_state.login:
 
-    st.markdown('<div class="title">🏥 Smart Health Insurance App</div>', unsafe_allow_html=True)
+    st.markdown('<div class="title">🏥 Health Insurance AI System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="subtitle">Smart Claims • Fraud Detection • Instant Processing</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
     st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
-    st.markdown('<div class="login-header">🔐 Welcome Back</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-header">🔐 Secure Login Portal</div>', unsafe_allow_html=True)
 
-    # DEMO INFO
+    # DEMO ACCOUNTS
     st.markdown("""
     <div class="demo-box">
-    <b>🧪 Demo Accounts</b><br><br>
-    👨‍⚕️ Hospital: hospital@gmail.com / hospital123<br>
-    🧑‍💼 Officer: officer@gmail.com / officer123<br>
-    👤 User: user@gmail.com / user123
+    <b>🚀 Demo Accounts (Click buttons below)</b><br><br>
+    👨‍⚕️ Hospital → hospital@gmail.com / hospital123<br>
+    🧑‍💼 Officer → officer@gmail.com / officer123<br>
+    👤 User → user@gmail.com / user123
     </div>
     """, unsafe_allow_html=True)
 
-    # QUICK DEMO BUTTONS
+    # QUICK LOGIN BUTTONS
     c1, c2, c3 = st.columns(3)
 
-    if c1.button("Hospital"):
+    if c1.button("🏥"):
         st.session_state.demo_email = "hospital@gmail.com"
         st.session_state.demo_pw = "hospital123"
         st.session_state.demo_role = "Hospital"
 
-    if c2.button("Officer"):
+    if c2.button("🧑‍💼"):
         st.session_state.demo_email = "officer@gmail.com"
         st.session_state.demo_pw = "officer123"
         st.session_state.demo_role = "Officer"
 
-    if c3.button("User"):
+    if c3.button("👤"):
         st.session_state.demo_email = "user@gmail.com"
         st.session_state.demo_pw = "user123"
         st.session_state.demo_role = "Policyholder"
@@ -221,8 +250,8 @@ if not st.session_state.login:
         )
     )
 
-    # LOGIN
-    if st.button("Login"):
+    # LOGIN BUTTON
+    if st.button("🚀 Login"):
         conn = get_conn()
         c = conn.cursor()
         c.execute("""
@@ -322,7 +351,7 @@ else:
                     conn.commit()
                     st.rerun()
 
-    # TRACK
+    # TRACK CLAIM
     elif menu == "Track Claim":
         st.title("Track Claim")
 
@@ -334,14 +363,15 @@ else:
             r = cur.fetchone()
 
             if r:
-                st.success("Found Claim")
+                st.success("Claim Found")
                 st.write(r)
             else:
-                st.error("Not found")
+                st.error("Not Found")
 
     # ANALYTICS
     elif menu == "Analytics":
         st.title("Analytics")
+
         if not df.empty:
             st.bar_chart(df["fraud_score"])
             st.line_chart(df["claim_amount"])
