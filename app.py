@@ -26,11 +26,12 @@ def get_conn():
 def hash_password(pw):
     return hashlib.sha256(pw.encode()).hexdigest()
 
-# ================= INIT DB =================
+# ================= INIT DB (FIXED + SAFE MIGRATION) =================
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
+    # USERS TABLE
     c.execute("""
     CREATE TABLE IF NOT EXISTS users(
         email TEXT,
@@ -39,6 +40,7 @@ def init_db():
     )
     """)
 
+    # CLAIMS TABLE
     c.execute("""
     CREATE TABLE IF NOT EXISTS claims(
         claim_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,11 +54,20 @@ def init_db():
         status TEXT,
         submission_date TEXT,
         file_path TEXT,
-        file_type TEXT,
-        submitted_by TEXT
+        file_type TEXT
     )
     """)
 
+    conn.commit()
+
+    # ================= SAFE COLUMN ADD (FIX KEYERROR) =================
+    try:
+        c.execute("ALTER TABLE claims ADD COLUMN submitted_by TEXT")
+        conn.commit()
+    except:
+        pass
+
+    # demo users
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -187,7 +198,6 @@ else:
     st.sidebar.write(st.session_state.role)
     st.sidebar.write(st.session_state.time)
 
-    # ================= ROLE BASED MENU =================
     if st.session_state.role == "Policyholder":
         menu = st.sidebar.radio(
             "Navigation",
@@ -311,13 +321,17 @@ else:
                     conn.commit()
                     st.rerun()
 
-    # ================= MY CLAIMS (POLICYHOLDER) =================
+    # ================= MY CLAIMS =================
     elif menu == "My Claims":
 
         st.title("👤 My Claims Dashboard")
 
         df = pd.read_sql("SELECT * FROM claims", conn)
-        my_df = df[df["submitted_by"] == st.session_state.email]
+
+        if "submitted_by" in df.columns:
+            my_df = df[df["submitted_by"] == st.session_state.email]
+        else:
+            my_df = pd.DataFrame()
 
         if my_df.empty:
             st.info("No claims submitted yet.")
