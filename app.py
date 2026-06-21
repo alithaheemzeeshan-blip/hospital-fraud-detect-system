@@ -284,9 +284,10 @@ else:
 
                     limit, status = 50000, "Active"
 
-                    score, reason = ai_fraud_model(status, a, limit, h)
+                   score, reason = ai_fraud_model(status, a, limit, h)
 
-                    final_status = "Rejected" if score > 70 else "Pending"
+                    # AI only gives recommendation
+                    final_status = "Pending"
 
                     cur = conn.cursor()
                     cur.execute("""
@@ -306,16 +307,122 @@ else:
                     st.info(f"Fraud Score: {score}%")
                     st.warning(f"Reason: {reason}")
 
-    # ================= REVIEW =================
-    elif menu == "Review Claims":
+   # ================= REVIEW =================
+elif menu == "Review Claims":
 
-        if st.session_state.role != "Officer":
-            st.warning("Access Denied")
+    if st.session_state.role != "Officer":
+        st.warning("Access Denied")
+
+    else:
+
+        st.title("Officer Review Panel")
+
+        df = pd.read_sql("SELECT * FROM claims", conn)
+
+        if df.empty:
+            st.info("No Claims Found")
+
         else:
-            st.title("Officer Panel")
 
-            df = pd.read_sql("SELECT * FROM claims", conn)
-            st.dataframe(df, use_container_width=True)
+            for _, row in df.iterrows():
+
+                st.markdown("---")
+
+                col1, col2 = st.columns([4,1])
+
+                with col1:
+
+                    st.subheader(f"Claim #{row['claim_id']}")
+
+                    st.write("Patient:", row["patient_name"])
+                    st.write("Policy Number:", row["policy_number"])
+                    st.write("Hospital:", row["hospital_name"])
+                    st.write("Treatment:", row["treatment_type"])
+                    st.write("Amount:", f"Rs {row['claim_amount']}")
+                    st.write("Fraud Score:", f"{row['fraud_score']}%")
+                    st.write("Reason:", row["fraud_reason"])
+                    st.write("Status:", row["status"])
+
+                    if row["fraud_score"] > 70:
+                        st.error("High Risk Claim")
+
+                    elif row["fraud_score"] > 40:
+                        st.warning("Medium Risk Claim")
+
+                    else:
+                        st.success("Low Risk Claim")
+
+                    if row["file_path"]:
+
+                        st.markdown("### Uploaded Document")
+
+                        try:
+
+                            if row["file_type"] and "image" in row["file_type"]:
+                                st.image(row["file_path"], width=300)
+
+                            elif row["file_type"] and "pdf" in row["file_type"]:
+                                with open(row["file_path"], "rb") as pdf:
+                                    st.download_button(
+                                        "Download PDF",
+                                        pdf,
+                                        file_name=os.path.basename(row["file_path"])
+                                    )
+
+                        except:
+                            st.warning("File not found")
+
+                with col2:
+
+                    if row["status"] == "Pending":
+
+                        if st.button(
+                            f"Approve {row['claim_id']}",
+                            key=f"approve_{row['claim_id']}"
+                        ):
+
+                            cur = conn.cursor()
+
+                            cur.execute(
+                                """
+                                UPDATE claims
+                                SET status='Approved'
+                                WHERE claim_id=?
+                                """,
+                                (row["claim_id"],)
+                            )
+
+                            conn.commit()
+
+                            st.success(
+                                f"Claim {row['claim_id']} Approved"
+                            )
+
+                            st.rerun()
+
+                        if st.button(
+                            f"Reject {row['claim_id']}",
+                            key=f"reject_{row['claim_id']}"
+                        ):
+
+                            cur = conn.cursor()
+
+                            cur.execute(
+                                """
+                                UPDATE claims
+                                SET status='Rejected'
+                                WHERE claim_id=?
+                                """,
+                                (row["claim_id"],)
+                            )
+
+                            conn.commit()
+
+                            st.error(
+                                f"Claim {row['claim_id']} Rejected"
+                            )
+
+                            st.rerun()
 
     # ================= TRACK CLAIM =================
     elif menu == "Track Claim":
