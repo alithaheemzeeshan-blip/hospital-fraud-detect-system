@@ -18,7 +18,6 @@ if "login" not in st.session_state:
     st.session_state.role = ""
     st.session_state.email = ""
     st.session_state.time = ""
-    st.session_state.logout_confirm = False
 
 # ================= DB =================
 def get_conn():
@@ -57,7 +56,6 @@ def init_db():
     )
     """)
 
-    # demo users
     c.execute("SELECT COUNT(*) FROM users")
     if c.fetchone()[0] == 0:
         users = [
@@ -103,14 +101,10 @@ def ai_fraud_model(status, amount, limit, hospital):
 
     return min(score, 100), ", ".join(reasons) if reasons else "Normal case"
 
-# ================= UI STYLE =================
+# ================= STYLE =================
 st.markdown("""
 <style>
-
-body {
-    background:#0b1220;
-    color:white;
-}
+body { background:#0b1220; color:white; }
 
 .title {
     text-align:center;
@@ -139,7 +133,6 @@ body {
     border-radius:10px;
     padding:8px 14px;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -173,22 +166,13 @@ if not st.session_state.login:
             else:
                 st.error("Invalid login")
 
-        st.info("""
-📧 Demo Credentials
-
-Hospital: hospital@gmail.com / hospital123  
-Officer: officer@gmail.com / officer123  
-Policyholder: user@gmail.com / user123
-""")
-
 # ================= MAIN APP =================
 else:
 
     st.sidebar.title("🏥 Smart Insurance System")
-
-    st.sidebar.write(f"👤 {st.session_state.email}")
-    st.sidebar.write(f"🧩 {st.session_state.role}")
-    st.sidebar.write(f"⏰ {st.session_state.time}")
+    st.sidebar.write(st.session_state.email)
+    st.sidebar.write(st.session_state.role)
+    st.sidebar.write(st.session_state.time)
 
     menu = st.sidebar.radio(
         "Navigation",
@@ -197,8 +181,6 @@ else:
 
     if st.sidebar.button("Logout"):
         st.session_state.login = False
-        st.session_state.role = ""
-        st.session_state.email = ""
         st.rerun()
 
     conn = get_conn()
@@ -226,7 +208,6 @@ else:
                 <div class="card">
                     <b>Claim ID:</b> {r['claim_id']} |
                     <span class="{level}">{r['fraud_score']}%</span><br><br>
-
                     🏥 Hospital: {r['hospital_name']}<br>
                     💊 Treatment: {r['treatment_type']}<br>
                     💰 Amount: {r['claim_amount']}<br>
@@ -240,42 +221,31 @@ else:
 
         if st.session_state.role != "Hospital":
             st.warning("Access Denied")
+
         else:
             st.title("Submit Claim")
-
-            treatment_types = [
-                "General Checkup",
-                "Emergency Care",
-                "Surgery",
-                "Cardiology Treatment",
-                "Orthopedic Treatment",
-                "Neurology Treatment",
-                "Maternity Care",
-                "Radiology / MRI / CT Scan",
-                "Laboratory Tests",
-                "ICU / Critical Care"
-            ]
 
             with st.form("claim"):
 
                 p = st.text_input("Policy Number")
                 n = st.text_input("Patient Name")
                 h = st.text_input("Hospital Name")
-                t = st.selectbox("Treatment Type", treatment_types)
+                t = st.text_input("Treatment Type")
                 a = st.number_input("Claim Amount", min_value=0.0)
 
                 uploaded_file = st.file_uploader(
-                    "Upload Medical Report (PDF/Image)",
+                    "Upload Medical Report",
                     type=["pdf", "png", "jpg", "jpeg"]
                 )
 
                 submit = st.form_submit_button("Submit Claim")
 
                 if submit:
+
                     file_path = None
                     file_type = None
 
-                    if uploaded_file is not None:
+                    if uploaded_file:
                         file_type = uploaded_file.type
                         file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
 
@@ -284,8 +254,8 @@ else:
 
                     limit, status = 50000, "Active"
 
-                   score, reason = ai_fraud_model(status, a, limit, h)
-                    # AI only gives recommendation
+                    score, reason = ai_fraud_model(status, a, limit, h)
+
                     final_status = "Pending"
 
                     cur = conn.cursor()
@@ -306,124 +276,46 @@ else:
                     st.info(f"Fraud Score: {score}%")
                     st.warning(f"Reason: {reason}")
 
-   # ================= REVIEW =================
-elif menu == "Review Claims":
+    # ================= REVIEW CLAIMS =================
+    elif menu == "Review Claims":
 
-    if st.session_state.role != "Officer":
-        st.warning("Access Denied")
-
-    else:
-
-        st.title("Officer Review Panel")
-
-        df = pd.read_sql("SELECT * FROM claims", conn)
-
-        if df.empty:
-            st.info("No Claims Found")
+        if st.session_state.role != "Officer":
+            st.warning("Access Denied")
 
         else:
 
-            for _, row in df.iterrows():
+            st.title("Officer Review Panel")
 
-                st.markdown("---")
+            df = pd.read_sql("SELECT * FROM claims", conn)
 
-                col1, col2 = st.columns([4,1])
+            if df.empty:
+                st.info("No Claims Found")
 
-                with col1:
+            else:
+                for _, row in df.iterrows():
+
+                    st.markdown("---")
 
                     st.subheader(f"Claim #{row['claim_id']}")
-
-                    st.write("Patient:", row["patient_name"])
-                    st.write("Policy Number:", row["policy_number"])
-                    st.write("Hospital:", row["hospital_name"])
-                    st.write("Treatment:", row["treatment_type"])
-                    st.write("Amount:", f"Rs {row['claim_amount']}")
-                    st.write("Fraud Score:", f"{row['fraud_score']}%")
-                    st.write("Reason:", row["fraud_reason"])
-                    st.write("Status:", row["status"])
-
-                    if row["fraud_score"] > 70:
-                        st.error("High Risk Claim")
-
-                    elif row["fraud_score"] > 40:
-                        st.warning("Medium Risk Claim")
-
-                    else:
-                        st.success("Low Risk Claim")
-
-                    if row["file_path"]:
-
-                        st.markdown("### Uploaded Document")
-
-                        try:
-
-                            if row["file_type"] and "image" in row["file_type"]:
-                                st.image(row["file_path"], width=300)
-
-                            elif row["file_type"] and "pdf" in row["file_type"]:
-                                with open(row["file_path"], "rb") as pdf:
-                                    st.download_button(
-                                        "Download PDF",
-                                        pdf,
-                                        file_name=os.path.basename(row["file_path"])
-                                    )
-
-                        except:
-                            st.warning("File not found")
-
-                with col2:
+                    st.write(row.to_dict())
 
                     if row["status"] == "Pending":
 
-                        if st.button(
-                            f"Approve {row['claim_id']}",
-                            key=f"approve_{row['claim_id']}"
-                        ):
-
+                        if st.button(f"Approve {row['claim_id']}", key=f"ap_{row['claim_id']}"):
                             cur = conn.cursor()
-
-                            cur.execute(
-                                """
-                                UPDATE claims
-                                SET status='Approved'
-                                WHERE claim_id=?
-                                """,
-                                (row["claim_id"],)
-                            )
-
+                            cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
+                                        (row["claim_id"],))
                             conn.commit()
-
-                            st.success(
-                                f"Claim {row['claim_id']} Approved"
-                            )
-
                             st.rerun()
 
-                        if st.button(
-                            f"Reject {row['claim_id']}",
-                            key=f"reject_{row['claim_id']}"
-                        ):
-
+                        if st.button(f"Reject {row['claim_id']}", key=f"re_{row['claim_id']}"):
                             cur = conn.cursor()
-
-                            cur.execute(
-                                """
-                                UPDATE claims
-                                SET status='Rejected'
-                                WHERE claim_id=?
-                                """,
-                                (row["claim_id"],)
-                            )
-
+                            cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                                        (row["claim_id"],))
                             conn.commit()
-
-                            st.error(
-                                f"Claim {row['claim_id']} Rejected"
-                            )
-
                             st.rerun()
 
-    # ================= TRACK CLAIM =================
+    # ================= TRACK =================
     elif menu == "Track Claim":
 
         st.title("Track Claim")
@@ -437,17 +329,6 @@ elif menu == "Review Claims":
 
             if r:
                 st.json(r)
-
-                st.markdown("### 📎 Uploaded Document")
-
-                if r[10]:
-                    if "image" in str(r[11]):
-                        st.image(r[10])
-                    else:
-                        st.markdown(f"[Open PDF]({r[10]})")
-                else:
-                    st.info("No file uploaded")
-
             else:
                 st.error("Not Found")
 
