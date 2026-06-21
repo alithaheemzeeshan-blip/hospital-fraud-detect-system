@@ -52,7 +52,8 @@ def init_db():
         status TEXT,
         submission_date TEXT,
         file_path TEXT,
-        file_type TEXT
+        file_type TEXT,
+        submitted_by TEXT
     )
     """)
 
@@ -162,22 +163,19 @@ if not st.session_state.login:
             else:
                 st.error("Invalid login")
 
-        # ================= DEMO CREDENTIALS UI =================
+        # ================= DEMO CREDENTIALS =================
         st.markdown("### 🔑 Demo Login Credentials")
 
         st.markdown("""
         <div class="card">
         <b>🏥 Hospital</b><br>
-        hospital@gmail.com<br>
-        hospital123<br><br>
+        hospital@gmail.com / hospital123<br><br>
 
         <b>🧑‍⚕️ Officer</b><br>
-        officer@gmail.com<br>
-        officer123<br><br>
+        officer@gmail.com / officer123<br><br>
 
         <b>👤 Policyholder</b><br>
-        user@gmail.com<br>
-        user123
+        user@gmail.com / user123
         </div>
         """, unsafe_allow_html=True)
 
@@ -189,10 +187,17 @@ else:
     st.sidebar.write(st.session_state.role)
     st.sidebar.write(st.session_state.time)
 
-    menu = st.sidebar.radio(
-        "Navigation",
-        ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
-    )
+    # ================= ROLE BASED MENU =================
+    if st.session_state.role == "Policyholder":
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "My Claims", "Track Claim", "Analytics"]
+        )
+    else:
+        menu = st.sidebar.radio(
+            "Navigation",
+            ["Dashboard", "Submit Claim", "Review Claims", "Track Claim", "Analytics"]
+        )
 
     if st.sidebar.button("Logout"):
         st.session_state.login = False
@@ -214,12 +219,10 @@ else:
 
         if not df.empty:
             for _, r in df.tail(6).iterrows():
-                level = "high" if r["fraud_score"] > 70 else "medium" if r["fraud_score"] > 40 else "low"
 
                 st.markdown(f"""
                 <div class="card">
-                    <b>Claim ID:</b> {r['claim_id']} |
-                    <span>{r['fraud_score']}%</span><br>
+                    <b>Claim ID:</b> {r['claim_id']}<br>
                     🏥 {r['hospital_name']}<br>
                     💊 {r['treatment_type']}<br>
                     💰 {r['claim_amount']}<br>
@@ -231,89 +234,106 @@ else:
     # ================= SUBMIT CLAIM =================
     elif menu == "Submit Claim":
 
-        if st.session_state.role != "Hospital":
-            st.warning("Access Denied")
+        st.title("Submit Claim")
 
-        else:
-            st.title("Submit Claim")
+        with st.form("claim"):
 
-            with st.form("claim"):
+            p = st.text_input("Policy Number")
+            n = st.text_input("Patient Name")
+            h = st.text_input("Hospital Name")
+            t = st.text_input("Treatment Type")
+            a = st.number_input("Claim Amount", min_value=0.0)
 
-                p = st.text_input("Policy Number")
-                n = st.text_input("Patient Name")
-                h = st.text_input("Hospital Name")
-                t = st.text_input("Treatment Type")
-                a = st.number_input("Claim Amount", min_value=0.0)
+            uploaded_file = st.file_uploader("Upload Report", type=["pdf", "png", "jpg", "jpeg"])
 
-                uploaded_file = st.file_uploader("Upload Report", type=["pdf", "png", "jpg", "jpeg"])
+            submit = st.form_submit_button("Submit Claim")
 
-                submit = st.form_submit_button("Submit Claim")
+            if submit:
 
-                if submit:
+                file_path = None
+                file_type = None
 
-                    file_path = None
-                    file_type = None
+                if uploaded_file:
+                    file_type = uploaded_file.type
+                    file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
 
-                    if uploaded_file:
-                        file_type = uploaded_file.type
-                        file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
+                    with open(file_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
 
-                        with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                limit, status = 50000, "Active"
 
-                    limit, status = 50000, "Active"
+                score, reason = ai_fraud_model(status, a, limit, h)
 
-                    score, reason = ai_fraud_model(status, a, limit, h)
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    p, n, h, t, a,
+                    score, reason,
+                    "Pending",
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    file_path,
+                    file_type,
+                    st.session_state.email
+                ))
 
-                    cur = conn.cursor()
-                    cur.execute("""
-                        INSERT INTO claims VALUES (NULL,?,?,?,?,?,?,?,?,?,?,?)
-                    """, (
-                        p, n, h, t, a,
-                        score, reason,
-                        "Pending",
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        file_path,
-                        file_type
-                    ))
+                conn.commit()
 
-                    conn.commit()
+                st.success("Claim Submitted Successfully")
+                st.info(f"Fraud Score: {score}%")
+                st.warning(reason)
 
-                    st.success("Claim Submitted")
-                    st.info(f"Fraud Score: {score}%")
-                    st.warning(reason)
-
-    # ================= REVIEW =================
+    # ================= REVIEW CLAIMS =================
     elif menu == "Review Claims":
 
-        if st.session_state.role != "Officer":
-            st.warning("Access Denied")
+        st.title("Officer Review Panel")
 
+        df = pd.read_sql("SELECT * FROM claims", conn)
+
+        for _, row in df.iterrows():
+
+            st.markdown("---")
+            st.write(row.to_dict())
+
+            if row["status"] == "Pending":
+
+                if st.button(f"Approve {row['claim_id']}", key=f"a{row['claim_id']}"):
+                    cur = conn.cursor()
+                    cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
+                                (row["claim_id"],))
+                    conn.commit()
+                    st.rerun()
+
+                if st.button(f"Reject {row['claim_id']}", key=f"r{row['claim_id']}"):
+                    cur = conn.cursor()
+                    cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
+                                (row["claim_id"],))
+                    conn.commit()
+                    st.rerun()
+
+    # ================= MY CLAIMS (POLICYHOLDER) =================
+    elif menu == "My Claims":
+
+        st.title("👤 My Claims Dashboard")
+
+        df = pd.read_sql("SELECT * FROM claims", conn)
+        my_df = df[df["submitted_by"] == st.session_state.email]
+
+        if my_df.empty:
+            st.info("No claims submitted yet.")
         else:
-            st.title("Officer Panel")
-
-            df = pd.read_sql("SELECT * FROM claims", conn)
-
-            for _, row in df.iterrows():
-
-                st.markdown("---")
-                st.write(row.to_dict())
-
-                if row["status"] == "Pending":
-
-                    if st.button(f"Approve {row['claim_id']}", key=f"a{row['claim_id']}"):
-                        cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Approved' WHERE claim_id=?",
-                                    (row["claim_id"],))
-                        conn.commit()
-                        st.rerun()
-
-                    if st.button(f"Reject {row['claim_id']}", key=f"r{row['claim_id']}"):
-                        cur = conn.cursor()
-                        cur.execute("UPDATE claims SET status='Rejected' WHERE claim_id=?",
-                                    (row["claim_id"],))
-                        conn.commit()
-                        st.rerun()
+            for _, r in my_df.iterrows():
+                st.markdown(f"""
+                <div class="card">
+                    <b>Claim ID:</b> {r['claim_id']}<br>
+                    🏥 {r['hospital_name']}<br>
+                    💊 {r['treatment_type']}<br>
+                    💰 {r['claim_amount']}<br>
+                    🧠 {r['fraud_score']}%<br>
+                    📌 {r['status']}<br>
+                    🕒 {r['submission_date']}
+                </div>
+                """, unsafe_allow_html=True)
 
     # ================= TRACK =================
     elif menu == "Track Claim":
